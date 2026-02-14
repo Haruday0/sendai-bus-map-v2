@@ -126,7 +126,7 @@ var (
 
 // 起動時にバス停データを読み込む
 func loadStopsData() error {
-	file, err := os.ReadFile("../data/stops.json")
+	file, err := os.ReadFile("./data/stops.json")
 	if err != nil {
 		return err
 	}
@@ -148,7 +148,7 @@ func loadAllData() error {
 	}
 
 	// timetables
-	file, err := os.ReadFile("../data/timetables.json")
+	file, err := os.ReadFile("./data/timetables.json")
 	if err != nil {
 		return err
 	}
@@ -158,7 +158,7 @@ func loadAllData() error {
 	log.Printf("時刻表データを読み込みました")
 
 	// shapes
-	file, err = os.ReadFile("../data/shapes.json")
+	file, err = os.ReadFile("./data/shapes.json")
 	if err != nil {
 		return err
 	}
@@ -168,7 +168,7 @@ func loadAllData() error {
 	log.Printf("経路データを読み込みました: %d件", len(shapesCache))
 
 	// calendar
-	file, err = os.ReadFile("../data/calendar.json")
+	file, err = os.ReadFile("./data/calendar.json")
 	if err != nil {
 		return err
 	}
@@ -178,7 +178,7 @@ func loadAllData() error {
 	log.Printf("カレンダーデータを読み込みました: %d件", len(calendarCache))
 
 	// extra
-	file, err = os.ReadFile("../data/extra.json")
+	file, err = os.ReadFile("./data/extra.json")
 	if err != nil {
 		return err
 	}
@@ -188,7 +188,7 @@ func loadAllData() error {
 	log.Printf("拡張データを読み込みました")
 
 	// routes
-	file, err = os.ReadFile("../data/routes.json")
+	file, err = os.ReadFile("./data/routes.json")
 	if err != nil {
 		return err
 	}
