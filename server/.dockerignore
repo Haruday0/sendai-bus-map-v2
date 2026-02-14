@@ -1,0 +1,10 @@
+.git
+.gitignore
+.vscode
+.idea
+*.log
+*.exe
+*.tmp
+*.swp
+*.env
+node_modules

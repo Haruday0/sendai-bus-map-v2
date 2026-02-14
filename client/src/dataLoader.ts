@@ -10,7 +10,8 @@ import type {
 } from "./types";
 
 const DATA_BASE_URL = "/data";
-const API_BASE = "http://localhost:8080/api"; // バックエンド API ベース
+const API_BASE =
+  "https://sendai-bus-map-api-455968320156.asia-northeast1.run.app/api"; // バックエンド API ベース
 
 /**
  * 指定パスの JSON を fetch して型付きで返す（旧実装：静的ファイル用）

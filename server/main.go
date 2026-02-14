@@ -623,6 +623,11 @@ func main() {
 		c.JSON(http.StatusOK, extraCache)
 	})
 
-	log.Println("サーバーを起動します: http://localhost:8080")
-	r.Run(":8080")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	log.Printf("サーバーを起動します: http://localhost:%s", port)
+	r.Run("0.0.0.0:" + port)
 }
