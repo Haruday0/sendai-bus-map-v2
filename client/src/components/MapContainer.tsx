@@ -75,6 +75,11 @@ const MapContainer: React.FC<MapContainerProps> = ({
   const isStyleLoadedRef = useRef(false);
   const [, forceUpdate] = useState({});
 
+  // バス更新コスト削減用：更新停止フラグ、最後のアクティビティ時刻、不活動タイマー
+  const [isUpdatesPaused, setIsUpdatesPaused] = useState(false);
+  const lastActivityTimeRef = useRef<number>(0);
+  const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // 外部参照用の ref 同期
   useEffect(() => {
     setMapRef(mapRef.current);
@@ -142,6 +147,11 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
   // --- バスマーカー更新 ---
   const updateBuses = useCallback(async () => {
+    // 更新が一時停止されている場合はスキップ
+    if (isUpdatesPaused) {
+      return;
+    }
+
     const map = mapRef.current;
     if (!map || !isStyleLoadedRef.current) return;
 
@@ -225,7 +235,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
     } catch (error) {
       console.error("Failed to fetch bus positions:", error);
     }
-  }, [selectedTrip, onBusClick]);
+  }, [selectedTrip, onBusClick, isUpdatesPaused]);
 
   // --- ルートライン描画 ---
   const drawRouteLine = useCallback(() => {
@@ -465,6 +475,96 @@ const MapContainer: React.FC<MapContainerProps> = ({
     };
   }, []);
 
+  // Page Visibility API: タブが非表示の間は更新を一時停止
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        setIsUpdatesPaused(true);
+      } else {
+        setIsUpdatesPaused(false);
+        lastActivityTimeRef.current = Date.now();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
+  // 不活動タイマーとアクティビティリスナー
+  useEffect(() => {
+    lastActivityTimeRef.current = Date.now();
+
+    const resetActivityTimer = () => {
+      lastActivityTimeRef.current = Date.now();
+
+      // 既に停止している場合は再開
+      if (isUpdatesPaused) {
+        setIsUpdatesPaused(false);
+      }
+
+      // 既存のタイマーをクリア
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current);
+      }
+
+      // 新しい 3 分タイマーをセット
+      inactivityTimerRef.current = setTimeout(
+        () => {
+          setIsUpdatesPaused(true);
+        },
+        3 * 60 * 1000,
+      ); // 3 分 = 180,000 ms
+    };
+
+    const map = mapRef.current;
+    if (!map) return;
+
+    // 地図操作を捕捉するイベントリスナー
+    map.on("movestart", resetActivityTimer);
+    map.on("dragstart", resetActivityTimer);
+    map.on("zoomstart", resetActivityTimer);
+
+    // その他のホイール / タッチ操作
+    const mapContainer = mapRef.current?.getContainer?.();
+    if (mapContainer) {
+      mapContainer.addEventListener("wheel", resetActivityTimer, {
+        passive: true,
+      });
+      mapContainer.addEventListener("touchstart", resetActivityTimer, {
+        passive: true,
+      });
+      mapContainer.addEventListener("touchmove", resetActivityTimer, {
+        passive: true,
+      });
+    }
+
+    // 初期タイマー開始
+    inactivityTimerRef.current = setTimeout(
+      () => {
+        setIsUpdatesPaused(true);
+      },
+      3 * 60 * 1000,
+    );
+
+    return () => {
+      if (map) {
+        map.off("movestart", resetActivityTimer);
+        map.off("dragstart", resetActivityTimer);
+        map.off("zoomstart", resetActivityTimer);
+      }
+      if (mapContainer) {
+        mapContainer.removeEventListener("wheel", resetActivityTimer);
+        mapContainer.removeEventListener("touchstart", resetActivityTimer);
+        mapContainer.removeEventListener("touchmove", resetActivityTimer);
+      }
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current);
+      }
+    };
+  }, [isUpdatesPaused]);
+
   // レイヤー切り替え同期
   useEffect(() => {
     const map = mapRef.current;
@@ -486,7 +586,33 @@ const MapContainer: React.FC<MapContainerProps> = ({
     updateBuses();
   }, [drawRouteLine, updateStopMarkers, updateBuses]);
 
-  return <div id="map" ref={mapContainerRef}></div>;
+  return (
+    <div className="map-container-wrapper">
+      <div id="map" ref={mapContainerRef}></div>
+      {isUpdatesPaused && (
+        <div className="updates-paused-overlay">
+          <button
+            onClick={() => {
+              setIsUpdatesPaused(false);
+              lastActivityTimeRef.current = Date.now();
+              if (inactivityTimerRef.current) {
+                clearTimeout(inactivityTimerRef.current);
+              }
+              inactivityTimerRef.current = setTimeout(
+                () => {
+                  setIsUpdatesPaused(true);
+                },
+                3 * 60 * 1000,
+              );
+            }}
+            className="resume-button"
+          >
+            自動更新を停止しました。再開するにはここをクリック
+          </button>
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default MapContainer;

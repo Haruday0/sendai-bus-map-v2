@@ -12,12 +12,14 @@ interface SearchBoxProps {
   onSelectStop: (stopName: string, lat: number, lng: number) => void;
   onSearchStateChange: (isSearching: boolean) => void;
   onFocus?: () => void;
+  isOpen?: boolean;
 }
 
 const SearchBox: React.FC<SearchBoxProps> = ({
   onSelectStop,
   onSearchStateChange,
   onFocus,
+  isOpen = true,
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearchResults, setShowSearchResults] = useState(false);
@@ -233,6 +235,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({
         ];
         setSearchResults(items);
         setShowSearchResults(true);
+        onSearchStateChange(true);
       } else {
         onSearchStateChange(false);
         setShowSearchResults(false);
@@ -253,6 +256,13 @@ const SearchBox: React.FC<SearchBoxProps> = ({
     setShowSearchResults(false);
     onSearchStateChange(false);
   }, [onSearchStateChange]);
+
+  // 外部から isOpen = false で閉じられたら、検索結果を非表示にする
+  useEffect(() => {
+    if (!isOpen) {
+      setShowSearchResults(false);
+    }
+  }, [isOpen]);
 
   // 外クリックで閉じる
   useEffect(() => {

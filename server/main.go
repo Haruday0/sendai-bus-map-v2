@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-contrib/cors"
+	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 )
 
@@ -412,6 +413,9 @@ func main() {
 	}
 
 	r := gin.Default()
+
+	// Gzip圧縮を有効化してデータ転送量を削減
+	r.Use(gzip.Gzip(gzip.DefaultCompression))
 
 	// CORS設定：フロントエンドからのアクセスを許可
 	r.Use(cors.Default())

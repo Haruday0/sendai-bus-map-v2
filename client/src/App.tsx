@@ -254,6 +254,7 @@ function App() {
         onSelectStop={handleSelectSearchStop}
         onSearchStateChange={setIsSearching}
         onFocus={handleClosePanel}
+        isOpen={isSearching}
       />
 
       <LayerControl activeLayer={activeLayer} onLayerChange={setActiveLayer} />

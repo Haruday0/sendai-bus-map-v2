@@ -505,3 +505,45 @@
   text-align: center;
   color: #999;
 }
+/* --- 地図コンテナ（更新一時停止UI用） --- */
+.map-container-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* --- 更新一時停止オーバーレイ --- */
+.updates-paused-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.3);
+  z-index: 100;
+}
+
+/* --- 再開ボタン --- */
+.resume-button {
+  padding: 16px 32px;
+  font-size: 16px;
+  font-weight: bold;
+  background-color: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: background-color 0.2s ease;
+}
+
+.resume-button:hover {
+  background-color: #45a049;
+}
+
+.resume-button:active {
+  background-color: #3d8b40;
+}
