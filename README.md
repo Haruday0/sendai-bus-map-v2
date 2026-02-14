@@ -1,6 +1,6 @@
 <h1 align="center">仙台市バスマップ</h1>
 
-<p align="center"><a href="https://busmap.haruday0.live/" target="_blank"><strong style="font-size:18px">https://busmap.haruday0.live/</strong></a></p>
+<p align="center"><a href="https://busmap.haruday0.live" target="_blank"><strong style="font-size:18px">https://busmap.haruday0.live/</strong></a></p>
 
 仙台市営バスのバスの現在位置を時刻表データに基づいて表示するウェブアプリです。
 
