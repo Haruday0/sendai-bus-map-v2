@@ -1,0 +1,846 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>バスルートエディタ</title>
+    <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+    <link
+      href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+      body {
+        margin: 0;
+        display: flex;
+        height: 100vh;
+        font-family: sans-serif;
+        overflow: hidden;
+      }
+      #map {
+        flex: 1;
+        position: relative;
+      }
+      #sidebar {
+        width: 380px;
+        padding: 20px;
+        background: #fff;
+        overflow-y: auto;
+        box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
+        z-index: 5000;
+        display: flex;
+        flex-direction: column;
+      }
+      h2 {
+        margin-top: 0;
+        font-size: 1.4em;
+        color: #00703c;
+        border-bottom: 2px solid #00703c;
+        padding-bottom: 10px;
+      }
+
+      /* バス停リスト */
+      #stop-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-bottom: 20px;
+      }
+      .stop-item {
+        display: flex;
+        align-items: center;
+        background: #f9f9f9;
+        padding: 10px;
+        border-radius: 6px;
+        border: 1px solid #ddd;
+        font-size: 13px;
+        justify-content: space-between;
+      }
+      .stop-item.start {
+        border-left: 5px solid #00703c;
+      }
+      .stop-item.end {
+        border-left: 5px solid #d32f2f;
+      }
+      .stop-item.via {
+        border-left: 5px solid #ffa000;
+      }
+      .stop-info {
+        display: flex;
+        flex-direction: column;
+      }
+      .stop-name {
+        font-weight: bold;
+        color: #333;
+      }
+      .stop-id {
+        font-size: 11px;
+        color: #666;
+      }
+
+      .info-box {
+        background: #fffbe6;
+        border: 1px solid #ffe58f;
+        padding: 10px;
+        border-radius: 4px;
+        font-size: 13px;
+        margin-bottom: 10px;
+      }
+
+      textarea {
+        width: 100%;
+        height: 150px;
+        font-family: monospace;
+        font-size: 10px;
+        margin-top: 10px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        padding: 8px;
+        box-sizing: border-box;
+      }
+
+      .controls {
+        margin-top: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding-top: 20px;
+      }
+      button {
+        padding: 12px;
+        cursor: pointer;
+        border: none;
+        border-radius: 6px;
+        font-weight: bold;
+        transition: 0.2s;
+        font-size: 14px;
+      }
+      button.primary {
+        background: #00703c;
+        color: white;
+      }
+      button.primary:hover {
+        background: #005a30;
+      }
+      button.primary:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+      }
+      button.secondary {
+        background: #666;
+        color: white;
+      }
+      button.danger {
+        background: #d32f2f;
+        color: white;
+      }
+      button.icon-btn {
+        padding: 4px;
+        background: transparent;
+        color: #999;
+        border: 1px solid #ddd;
+      }
+      button.icon-btn:hover {
+        color: #d32f2f;
+        border-color: #d32f2f;
+        background: #fff0f0;
+      }
+
+      .mode-switch {
+        margin-bottom: 15px;
+        font-size: 14px;
+        background: #fff;
+        padding: 10px;
+        border: 1px solid #00703c;
+        border-radius: 6px;
+      }
+      .mode-switch label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        font-weight: bold;
+        color: #00703c;
+      }
+
+      /* バス停デザイン */
+      .stop-marker-container {
+        width: 20px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        pointer-events: auto !important;
+        z-index: 100;
+      }
+      .stop-dot {
+        width: 16px;
+        height: 16px;
+        background: #fff;
+        border: 4px solid #00703c;
+        border-radius: 50%;
+        box-sizing: border-box;
+        flex-shrink: 0;
+      }
+      .stop-label {
+        position: absolute;
+        right: 22px;
+        color: #444;
+        font-size: 13px;
+        font-weight: bold;
+        white-space: nowrap;
+        text-shadow:
+          2px 2px 0 #fff,
+          -2px 2px 0 #fff,
+          2px -2px 0 #fff,
+          -2px -2px 0 #fff,
+          0 0 6px #fff;
+        pointer-events: none;
+      }
+      .stop-marker-container.selected .stop-dot {
+        background: #f00 !important;
+        border-color: #fff !important;
+        box-shadow: 0 0 10px rgba(255, 0, 0, 0.5);
+      }
+      .stop-marker-container.selected .stop-label {
+        color: #f00;
+      }
+
+      button.undo-btn {
+        width: 100%;
+        margin-bottom: 10px;
+      }
+      button.assign-btn {
+        width: 100%;
+        margin-bottom: 10px;
+        background: #ffa000;
+        color: white;
+      }
+      button.assign-btn.active {
+        background: #ff6f00;
+        box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+        border: 2px solid #333;
+      }
+      button.assign-btn:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+      }
+      .undo-icon {
+        vertical-align: bottom;
+        font-size: 18px;
+      }
+
+      .maplibregl-popup {
+        z-index: 6000;
+      }
+      .maplibregl-popup-content {
+        padding: 10px;
+        font-size: 14px;
+      }
+      .popup-btn {
+        margin-top: 8px;
+        width: 100%;
+        padding: 5px;
+        font-size: 12px;
+        background: #00703c;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .popup-btn:hover {
+        opacity: 0.9;
+      }
+
+      /* レイヤーメニュー UI */
+      #layer-control-container {
+        position: absolute;
+        top: 15px;
+        right: 15px;
+        z-index: 9000;
+      }
+      #layer-btn {
+        background: white;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        border: 1px solid #ddd;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: 0.2s;
+      }
+      #layer-btn:hover {
+        background: #f8f8f8;
+        transform: scale(1.05);
+      }
+      #layer-btn .material-symbols-outlined {
+        font-size: 24px;
+        color: #333;
+      }
+
+      #layer-menu {
+        position: absolute;
+        top: 45px;
+        right: 0;
+        background: white;
+        padding: 8px;
+        border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+        border: 1px solid #eee;
+        display: none;
+        width: 220px;
+      }
+      #layer-menu.show {
+        display: block;
+      }
+      .layer-item {
+        padding: 12px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        cursor: pointer;
+        border-radius: 8px;
+        font-size: 14px;
+        transition: 0.2s;
+        color: #444;
+      }
+      .layer-item:hover {
+        background: #f5f5f5;
+      }
+      .layer-item.active {
+        background: #e8f5e9;
+        color: #00703c;
+        font-weight: bold;
+      }
+      .layer-item .material-symbols-outlined {
+        font-size: 22px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map">
+      <div id="layer-control-container">
+        <div id="layer-btn" onclick="toggleMenu()" title="地図レイヤー切り替え">
+          <span class="material-symbols-outlined">layers</span>
+        </div>
+        <div id="layer-menu">
+          <div class="layer-item active" onclick="switchLayer('pale')">
+            <span class="material-symbols-outlined">map</span>淡色地図 (標準)
+          </div>
+          <div class="layer-item" onclick="switchLayer('std')">
+            <span class="material-symbols-outlined">public</span>標準地図
+          </div>
+          <div class="layer-item" onclick="switchLayer('ortho')">
+            <span class="material-symbols-outlined">photo_camera</span>航空写真
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="sidebar">
+      <h2>ルートエディタ</h2>
+
+      <div class="mode-switch">
+        <label>
+          <input type="checkbox" id="straight-mode" />
+          直線モード (手動)
+        </label>
+      </div>
+
+      <div id="stop-list">
+        <!-- JSで動的に追加 -->
+      </div>
+
+      <div class="info-box" id="guide-msg">
+        地図上のバス停をクリックして、ルートに追加してください。
+      </div>
+
+      <button
+        class="assign-btn"
+        id="assign-btn"
+        onclick="toggleAssignMode()"
+        disabled
+      >
+        <span class="material-symbols-outlined undo-icon"
+          >add_location_alt</span
+        >
+        最後の点をバス停に設定
+      </button>
+
+      <button class="secondary undo-btn" onclick="undo()">
+        <span class="material-symbols-outlined undo-icon">undo</span>
+        直前の操作を取り消す
+      </button>
+
+      <textarea
+        id="output"
+        readonly
+        placeholder="ここにJSONデータが出力されます"
+      ></textarea>
+
+      <div class="controls">
+        <button
+          class="primary"
+          id="copy-btn"
+          onclick="copyToClipboard()"
+          disabled
+        >
+          JSON データをコピー
+        </button>
+        <button class="danger" onclick="resetAll()">すべてリセット</button>
+      </div>
+    </div>
+
+    <script>
+      let stopsData = {};
+      let selectedStops = []; // { id, name, lng, lat } のリスト
+      let waypoints = []; // クリックした点 [lng, lat]
+      let segments = []; // 各区間の全座標列のリスト
+      let markers = []; // waypoint 各点のマーカー（赤い点）
+      let stopMarkers = {}; // 全バス停マーカー
+      let isAssignMode = false;
+
+      const map = new maplibregl.Map({
+        container: "map",
+        style: {
+          version: 8,
+          sources: {
+            "gsi-pale": {
+              type: "raster",
+              tiles: [
+                "https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png",
+              ],
+              tileSize: 256,
+              attribution: "国土地理院",
+              maxzoom: 18,
+            },
+            "gsi-std": {
+              type: "raster",
+              tiles: [
+                "https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png",
+              ],
+              tileSize: 256,
+              attribution: "国土地理院",
+              maxzoom: 18,
+            },
+            "gsi-ortho": {
+              type: "raster",
+              tiles: [
+                "https://cyberjapandata.gsi.go.jp/xyz/ort/{z}/{x}/{y}.jpg",
+              ],
+              tileSize: 256,
+              attribution: "国土地理院",
+              maxzoom: 18,
+            },
+          },
+          layers: [
+            {
+              id: "ortho-layer",
+              type: "raster",
+              source: "gsi-ortho",
+              layout: { visibility: "none" },
+            },
+            {
+              id: "std-layer",
+              type: "raster",
+              source: "gsi-std",
+              layout: { visibility: "none" },
+            },
+            {
+              id: "pale-layer",
+              type: "raster",
+              source: "gsi-pale",
+              layout: { visibility: "visible" },
+            },
+          ],
+        },
+        center: [140.8824, 38.2601],
+        zoom: 16,
+        hash: true,
+      });
+
+      function toggleMenu() {
+        document.getElementById("layer-menu").classList.toggle("show");
+      }
+
+      function toggleAssignMode() {
+        if (waypoints.length === 0) return;
+        isAssignMode = !isAssignMode;
+        const btn = document.getElementById("assign-btn");
+        if (isAssignMode) {
+          btn.classList.add("active");
+          document.getElementById("guide-msg").innerText =
+            "地図上のバス停をクリックして、最後の点と紐付けてください。";
+          document.getElementById("guide-msg").style.background = "#fffbe6";
+        } else {
+          btn.classList.remove("active");
+          document.getElementById("guide-msg").innerText =
+            "地図上のバス停をクリックして、ルートに追加してください。";
+          document.getElementById("guide-msg").style.background = "";
+        }
+      }
+
+      function switchLayer(type) {
+        map.setLayoutProperty("pale-layer", "visibility", "none");
+        map.setLayoutProperty("std-layer", "visibility", "none");
+        map.setLayoutProperty("ortho-layer", "visibility", "none");
+        if (type === "pale")
+          map.setLayoutProperty("pale-layer", "visibility", "visible");
+        else if (type === "std")
+          map.setLayoutProperty("std-layer", "visibility", "visible");
+        else if (type === "ortho")
+          map.setLayoutProperty("ortho-layer", "visibility", "visible");
+        document
+          .querySelectorAll(".layer-item")
+          .forEach((el) => el.classList.remove("active"));
+        if (event && event.currentTarget)
+          event.currentTarget.classList.add("active");
+        document.getElementById("layer-menu").classList.remove("show");
+      }
+
+      async function loadData() {
+        try {
+          const res = await fetch("../data/stops.json");
+          stopsData = await res.json();
+          addStopMarkers();
+        } catch (err) {
+          console.error("Data load error:", err);
+        }
+      }
+
+      function addStopMarkers() {
+        Object.keys(stopsData).forEach((id) => {
+          const stop = stopsData[id];
+          const el = document.createElement("div");
+          el.className = "stop-marker-container";
+          const label = document.createElement("div");
+          label.className = "stop-label";
+          label.innerText =
+            stop.name + (stop.platform ? ` (${stop.platform}番)` : "");
+          el.appendChild(label);
+          const dot = document.createElement("div");
+          dot.className = "stop-dot";
+          el.appendChild(dot);
+
+          // クリック時のイベント
+          el.onclick = (e) => {
+            e.stopPropagation(); // マップのクリックイベントへの伝播を防ぐ
+            addStopToRoute(id);
+          };
+
+          const marker = new maplibregl.Marker({ element: el })
+            .setLngLat([stop.lng, stop.lat])
+            .addTo(map);
+          stopMarkers[id] = marker;
+        });
+      }
+
+      // バス停をルートに追加
+      async function addStopToRoute(id) {
+        const stop = stopsData[id];
+
+        // 既に直前に追加されたバス停と同じなら無視（連打防止）
+        if (
+          selectedStops.length > 0 &&
+          selectedStops[selectedStops.length - 1].id === id
+        ) {
+          return;
+        }
+
+        const lastMarkerObj =
+          markers.length > 0 ? markers[markers.length - 1] : null;
+
+        if (
+          isAssignMode &&
+          lastMarkerObj &&
+          lastMarkerObj.type === "waypoint"
+        ) {
+          // 【道路上の点をバス停として紐付ける】（ボタンが押されている時のみ）
+          lastMarkerObj.type = "stop";
+          const svg = lastMarkerObj.marker.getElement().querySelector("svg");
+          if (svg) {
+            svg.querySelector("path").setAttribute("fill", "#00703c");
+          }
+          toggleAssignMode(); // モード解除
+        } else {
+          // 通常通りバス停の座標を直接追加
+          const newLngLat = [stop.lng, stop.lat];
+
+          if (waypoints.length > 0) {
+            await addPathSegment(newLngLat);
+          } else {
+            // 最初の点（始点）
+            waypoints.push(newLngLat);
+            const marker = new maplibregl.Marker({
+              color: "#00703c",
+              scale: 0.6,
+            })
+              .setLngLat(newLngLat)
+              .addTo(map);
+            markers.push({ type: "stop", marker: marker });
+          }
+          if (isAssignMode) toggleAssignMode(); // 念のため解除
+        }
+
+        selectedStops.push({
+          id: id,
+          name: stop.name,
+          lng: stop.lng,
+          lat: stop.lat,
+        });
+
+        // UI更新
+        updateStopListUI();
+        updateOutput();
+        updateButtonStates();
+      }
+
+      function updateButtonStates() {
+        document.getElementById("assign-btn").disabled = waypoints.length === 0;
+      }
+
+      // 地図上の任意地点をクリックしたとき
+      map.on("click", async (e) => {
+        const lngLat = [e.lngLat.lng, e.lngLat.lat];
+
+        if (waypoints.length === 0) {
+          // 始点を道路上の点から始める場合
+          waypoints.push(lngLat);
+          const marker = new maplibregl.Marker({ color: "#d32f2f", scale: 0.6 })
+            .setLngLat(lngLat)
+            .addTo(map);
+          markers.push({ type: "waypoint", marker: marker });
+        } else {
+          // 2点目以降
+          await addPathSegment(lngLat, true); // true = 中間点（waypoint）として追加
+        }
+        updateButtonStates();
+      });
+
+      // 経路区間を追加する関数
+      async function addPathSegment(newLngLat, isWaypoint = false) {
+        const isStraight = document.getElementById("straight-mode").checked;
+        const prevPoint = waypoints[waypoints.length - 1];
+
+        let segmentCoords = [];
+        if (isStraight) {
+          segmentCoords = [prevPoint, newLngLat];
+        } else {
+          // OSRMで区間計算
+          const url = `https://router.project-osrm.org/route/v1/driving/${prevPoint[0]},${prevPoint[1]};${newLngLat[0]},${newLngLat[1]}?overview=full&geometries=geojson`;
+          try {
+            const res = await axios.get(url);
+            if (res.data.code === "Ok") {
+              segmentCoords = res.data.routes[0].geometry.coordinates;
+            } else {
+              segmentCoords = [prevPoint, newLngLat];
+            }
+          } catch (e) {
+            segmentCoords = [prevPoint, newLngLat];
+          }
+        }
+
+        waypoints.push(newLngLat);
+        segments.push(segmentCoords);
+
+        // 中間点（地図クリック）なら赤いマーカーを表示
+        if (isWaypoint) {
+          const marker = new maplibregl.Marker({ color: "#d32f2f", scale: 0.6 })
+            .setLngLat(newLngLat)
+            .addTo(map);
+          markers.push({ type: "waypoint", marker: marker });
+        } else {
+          // バス停追加の場合、マーカー管理用配列にはnullを入れておく（undo用）
+          markers.push({ type: "stop", marker: null });
+        }
+
+        drawRoute();
+        updateOutput();
+      }
+
+      function updateStopListUI() {
+        const listEl = document.getElementById("stop-list");
+        listEl.innerHTML = "";
+
+        selectedStops.forEach((stop, index) => {
+          const div = document.createElement("div");
+          let typeClass = "via";
+          let label = "経由";
+          if (index === 0) {
+            typeClass = "start";
+            label = "始点";
+          } else if (
+            index === selectedStops.length - 1 &&
+            selectedStops.length > 1
+          ) {
+            typeClass = "end";
+            label = "終点(仮)";
+          }
+
+          div.className = `stop-item ${typeClass}`;
+          div.innerHTML = `
+            <div class="stop-info">
+              <span class="stop-name">${stop.name}</span>
+              <span class="stop-id">${stop.id}</span>
+            </div>
+            <div style="font-weight:bold; color:#666; font-size:11px;">${label}</div>
+          `;
+          listEl.appendChild(div);
+        });
+
+        // 選択されたバス停マーカーを強調
+        document
+          .querySelectorAll(".stop-marker-container")
+          .forEach((el) => el.classList.remove("selected"));
+        selectedStops.forEach((s) => {
+          if (stopMarkers[s.id]) {
+            stopMarkers[s.id].getElement().classList.add("selected");
+          }
+        });
+      }
+
+      function drawRoute() {
+        let combined = [];
+        segments.forEach((seg) => {
+          const s = [...seg];
+          if (combined.length > 0) s.shift(); // 先頭の重複を解除
+          combined = combined.concat(s);
+        });
+
+        const geojson = {
+          type: "Feature",
+          geometry: { type: "LineString", coordinates: combined },
+        };
+        if (map.getSource("route")) {
+          map.getSource("route").setData(geojson);
+        } else {
+          map.addSource("route", { type: "geojson", data: geojson });
+          map.addLayer({
+            id: "route-line",
+            type: "line",
+            source: "route",
+            paint: {
+              "line-color": "#d32f2f",
+              "line-width": 5,
+              "line-opacity": 0.8,
+            },
+          });
+        }
+      }
+
+      function undo() {
+        if (waypoints.length === 0) return;
+
+        // 最後の追加がバス停だった場合
+        const lastMarkerObj = markers[markers.length - 1]; // markersは segments と対応 (最初の1点目を除く)
+
+        // 最初の1点（始点バス停）だけの場合
+        if (waypoints.length === 1) {
+          waypoints = [];
+          selectedStops = [];
+          segments = [];
+          markers = [];
+          updateStopListUI();
+          drawRoute(); // クリア
+          updateOutput();
+          return;
+        }
+
+        // 経路セグメントがある場合
+        waypoints.pop();
+        segments.pop();
+
+        if (lastMarkerObj) {
+          if (lastMarkerObj.type === "waypoint") {
+            lastMarkerObj.marker.remove();
+          } else if (lastMarkerObj.type === "stop") {
+            selectedStops.pop();
+            updateStopListUI();
+          }
+          markers.pop();
+        }
+
+        drawRoute();
+        updateOutput();
+        updateButtonStates();
+        if (isAssignMode) toggleAssignMode(); // モード解除
+      }
+
+      function resetAll() {
+        selectedStops = [];
+        waypoints = [];
+        segments = [];
+        markers.forEach((m) => {
+          if (m.marker) m.marker.remove();
+        });
+        markers = [];
+
+        document.getElementById("output").value = "";
+        updateStopListUI();
+        updateButtonStates();
+        if (isAssignMode) toggleAssignMode();
+
+        if (map.getSource("route"))
+          map
+            .getSource("route")
+            .setData({ type: "FeatureCollection", features: [] });
+      }
+
+      function updateOutput() {
+        if (selectedStops.length < 2) {
+          document.getElementById("output").value = "";
+          document.getElementById("copy-btn").disabled = true;
+          return;
+        }
+
+        let combined = [];
+        let stopIndices = [0]; // 始点のインデックス（waypoints[0]）は常に0
+
+        segments.forEach((seg, i) => {
+          const s = [...seg];
+          if (combined.length > 0) s.shift(); // 前のセグメントの最後尾と重複するので削除
+          combined = combined.concat(s);
+
+          // markers[i+1] は waypoints[i+1]（このセグメントの終点）の属性を持っている
+          if (markers[i + 1] && markers[i + 1].type === "stop") {
+            stopIndices.push(combined.length - 1);
+          }
+        });
+
+        // キーの生成: ID1|...|ID2|...|ID3
+        const patternKey = selectedStops.map((s) => s.id).join("|...|");
+
+        // 読みやすい形式に整形
+        const coordsStr = combined
+          .map((c) => `      [${c[0]}, ${c[1]}]`)
+          .join(",\n");
+        const jsonStr = `  "${patternKey}": {
+    "coordinates": [
+${coordsStr}
+    ],
+    "stop_indices": [${stopIndices.join(", ")}]
+  }`;
+
+        document.getElementById("output").value = jsonStr;
+        document.getElementById("copy-btn").disabled = false;
+      }
+
+      function copyToClipboard() {
+        const textarea = document.getElementById("output");
+        textarea.select();
+        document.execCommand("copy");
+        alert("JSONデータをコピーしました！");
+      }
+
+      loadData();
+    </script>
+  </body>
+</html>
