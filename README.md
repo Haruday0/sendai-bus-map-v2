@@ -1,11 +1,12 @@
-# 仙台市営バスマップ v2
+<h1 align="center">仙台市バスマップ</h1>
+
+<p align="center"><a href="https://busmap.haruday0.live/" target="_blank"><strong style="font-size:18px">https://busmap.haruday0.live/</strong></a></p>
 
 仙台市営バスのバスの現在位置を時刻表データに基づいて表示するウェブアプリです。
 
-このプロジェクトはバックエンドに **Go**、フロントエンドに **TypeScript (React + Vite)** を使用して構成されています。
+宮城交通などの市営バス以外のバス会社には対応していません。
 
-旧クライアント単体版：
-https://github.com/Haruday0/sendai-bus-map
+このプロジェクトはバックエンドに **Go**、フロントエンドに **TypeScript (React + Vite)** を使用して構成されています。
 
 ## 主な機能
 
