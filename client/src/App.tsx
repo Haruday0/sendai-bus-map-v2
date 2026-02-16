@@ -130,12 +130,22 @@ function App() {
     async (minLat: number, maxLat: number, minLng: number, maxLng: number) => {
       try {
         const stops = await fetchStopsByBounds(minLat, maxLat, minLng, maxLng);
-        setData((prev) => ({ ...prev, stops }));
+        setData((prev) => {
+          // 新しいバス停情報を設定
+          const newStops = { ...stops };
+
+          // 選択中のバス停は必ず保持（画面外でも消えないように）
+          if (selectedStopId && prev.stops[selectedStopId]) {
+            newStops[selectedStopId] = prev.stops[selectedStopId];
+          }
+
+          return { ...prev, stops: newStops };
+        });
       } catch (e) {
         console.error("failed to fetch stops by bounds", e);
       }
     },
-    [],
+    [selectedStopId],
   );
 
   // ==================== 検索でバス停を選択 ====================

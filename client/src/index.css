@@ -4,10 +4,22 @@ body {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  font-family: "Hiragino Kaku Gothic ProN", sans-serif;
+  font-family: "Noto Sans JP", sans-serif;
+  font-optical-sizing: auto;
+  font-style: normal;
 }
 
 #root {
   height: 100%;
   width: 100%;
+}
+
+/* フォーム要素は常に親要素のフォントを継承 */
+input,
+button,
+textarea,
+select {
+  font-family: inherit;
+  font-optical-sizing: inherit;
+  -webkit-font-smoothing: antialiased;
 }

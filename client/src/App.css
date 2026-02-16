@@ -51,6 +51,7 @@
   color: #444;
   font-size: 13px;
   font-weight: bold;
+  font-family: "Noto Sans JP", sans-serif;
   white-space: nowrap;
   text-shadow:
     2px 2px 0 #fff,
@@ -106,6 +107,7 @@
   border-radius: 15px;
   font-size: 11px;
   font-weight: bold;
+  font-family: "Noto Sans JP", sans-serif;
   border: 2px solid white;
   white-space: nowrap;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
@@ -401,7 +403,9 @@
 .search-box input {
   border: none;
   outline: none;
-  padding: 10px;
+  padding: 0 10px;
+  height: 36px;
+  line-height: 36px;
   font-size: 16px;
   flex-grow: 1;
   background: transparent;
