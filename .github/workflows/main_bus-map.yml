@@ -31,7 +31,7 @@ jobs:
 
       - name: Lowercase repository name
         run: |
-          echo "IMAGE_TAG=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/bus-map-api:${{ github.sha }}" >> $GITHUB_ENV
+          echo "IMAGE_TAG=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${GITHUB_REPOSITORY#*/}:latest" >> $GITHUB_ENV
 
       - name: Build and push container image to registry
         uses: docker/build-push-action@v3
