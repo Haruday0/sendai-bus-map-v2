@@ -35,7 +35,7 @@ jobs:
       - name: Prepare image tag
         id: meta
         run: |
-          echo "image_tag=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${GITHUB_REPOSITORY#*/}:latest" >> $GITHUB_OUTPUT
+          echo "image_tag=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${GITHUB_REPOSITORY#*/}:${GITHUB_SHA}" >> $GITHUB_OUTPUT
 
       - name: Build and push container image to registry
         uses: docker/build-push-action@v3
