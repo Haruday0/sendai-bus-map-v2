@@ -11,6 +11,7 @@ import type {
 
 const DATA_BASE_URL = "/data";
 const API_BASE =
+  import.meta.env.VITE_API_BASE_URL ||
   "https://sendai-bus-map-api-455968320156.asia-northeast1.run.app/api"; // バックエンド API ベース
 
 /**

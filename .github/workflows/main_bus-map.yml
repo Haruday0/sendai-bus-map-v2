@@ -31,23 +31,22 @@ jobs:
       - name: Build and push container image to registry
         uses: docker/build-push-action@v3
         with:
-          context: .
+          context: ./server
           push: true
-          tags: ghcr.io/${{ secrets.AZUREAPPSERVICE_CONTAINERUSERNAME_C8281B8609C941BDBECF18C07C5BACE0 }}/ghcr.io/haruday0/sendai-bus-map-v2:${{ github.sha }}
-          file: ./Dockerfile
+          tags: ghcr.io/${{ github.repository_owner }}/bus-map-api:${{ github.sha }}
+          file: ./server/Dockerfile
 
   deploy:
     runs-on: ubuntu-latest
-    
+
     needs: build
-    
+
     steps:
-      
       - name: Deploy to Azure Web App
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v2
         with:
-          app-name: 'bus-map'
-          slot-name: 'Production'
-          images: 'ghcr.io/${{ secrets.AZUREAPPSERVICE_CONTAINERUSERNAME_C8281B8609C941BDBECF18C07C5BACE0 }}/ghcr.io/haruday0/sendai-bus-map-v2:${{ github.sha }}'
+          app-name: "bus-map"
+          slot-name: "Production"
+          images: "ghcr.io/${{ github.repository_owner }}/bus-map-api:${{ github.sha }}"
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_D2A7ACCE20624F6FB45EB2476C993196 }}

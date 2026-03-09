@@ -22,7 +22,7 @@ WORKDIR /app
 COPY --from=builder /app/server /app/server
 COPY --from=builder /app/data /app/data
 
-# Cloud Run sets PORT at runtime
+# Azure App Service supports port 80/443 and maps it to the container
 EXPOSE 8080
 
 USER nonroot:nonroot
