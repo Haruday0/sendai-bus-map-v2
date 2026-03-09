@@ -35,10 +35,10 @@ jobs:
       - name: Build and push container image to registry
         uses: docker/build-push-action@v3
         with:
-          context: .
+          context: ./server
           push: true
-          tags: ghcr.io/${{ secrets.AZUREAPPSERVICE_CONTAINERUSERNAME_CC47E096ABD24BC7A76543A120ADB3EA }}/haruday0/bus-map-api:${{ github.sha }}
-          file: ./Dockerfile
+          tags: ${{ env.IMAGE_TAG }}
+          file: ./server/Dockerfile
 
   deploy:
     runs-on: ubuntu-latest
@@ -52,5 +52,5 @@ jobs:
         with:
           app-name: "bus-map"
           slot-name: "Production"
-          images: "ghcr.io/${{ secrets.AZUREAPPSERVICE_CONTAINERUSERNAME_CC47E096ABD24BC7A76543A120ADB3EA }}/haruday0/bus-map-api:${{ github.sha }}"
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_0CAD3C0DDF2248BA8A0602BB7534A4F2 }}
+          images: ${{ env.IMAGE_TAG }}
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_D2A7ACCE20624F6FB45EB2476C993196 }}
