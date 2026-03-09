@@ -29,12 +29,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Lowercase repository name
+        run: |
+          echo "IMAGE_TAG=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/bus-map-api:${{ github.sha }}" >> $GITHUB_ENV
+
       - name: Build and push container image to registry
         uses: docker/build-push-action@v3
         with:
           context: ./server
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/bus-map-api:${{ github.sha }}
+          tags: ${{ env.IMAGE_TAG }}
           file: ./server/Dockerfile
 
   deploy:
@@ -49,5 +53,5 @@ jobs:
         with:
           app-name: "bus-map"
           slot-name: "Production"
-          images: "ghcr.io/${{ github.repository_owner }}/bus-map-api:${{ github.sha }}"
+          images: ${{ env.IMAGE_TAG }}
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_D2A7ACCE20624F6FB45EB2476C993196 }}
