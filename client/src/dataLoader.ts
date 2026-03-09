@@ -12,7 +12,7 @@ import type {
 const DATA_BASE_URL = "/data";
 const API_BASE =
   import.meta.env.VITE_API_BASE_URL ||
-  "https://sendai-bus-map-api-455968320156.asia-northeast1.run.app/api"; // バックエンド API ベース
+  "https://bus-map-bzd9hhfedye5crcq.japaneast-01.azurewebsites.net/api"; // バックエンド API ベース
 
 /**
  * 指定パスの JSON を fetch して型付きで返す（旧実装：静的ファイル用）

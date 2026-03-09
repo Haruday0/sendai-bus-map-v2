@@ -123,7 +123,21 @@ var (
 	calendarCache   CalendarData
 	extraCache      ExtraData
 	routesCache     RoutesData
+	jstLocation     = loadJSTLocation()
 )
+
+func loadJSTLocation() *time.Location {
+	loc, err := time.LoadLocation("Asia/Tokyo")
+	if err != nil {
+		// Fallback keeps behavior stable even if tzdata is unavailable in runtime image.
+		return time.FixedZone("JST", 9*60*60)
+	}
+	return loc
+}
+
+func nowInJST() time.Time {
+	return time.Now().In(jstLocation)
+}
 
 // 起動時にバス停データを読み込む
 func loadStopsData() error {
@@ -232,7 +246,7 @@ func timeToSec(t string) int {
 
 // 現在のサービスが運行中かチェック
 func isServiceRunningToday(serviceID string) bool {
-	now := time.Now()
+	now := nowInJST()
 	ymd := now.Format("20060102")
 
 	// 例外日チェック
@@ -301,7 +315,7 @@ func calculateBusPosition(trip TripInfo, nowSec int, patternKey string) []float6
 
 // 現在運行中のバス位置を全て計算
 func calculateAllBusPositions() []BusPosition {
-	now := time.Now()
+	now := nowInJST()
 	nowSec := now.Hour()*3600 + now.Minute()*60 + now.Second()
 
 	result := []BusPosition{}
@@ -352,7 +366,7 @@ func calculateAllBusPositions() []BusPosition {
 
 // 範囲内の運行中バス位置のみを計算
 func calculateBusPositionsInBounds(minLat, maxLat, minLng, maxLng float64) []BusPosition {
-	now := time.Now()
+	now := nowInJST()
 	nowSec := now.Hour()*3600 + now.Minute()*60 + now.Second()
 
 	result := []BusPosition{}
