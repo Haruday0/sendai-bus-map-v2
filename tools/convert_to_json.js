@@ -4,12 +4,13 @@ const axios = require("axios");
 const path = require("path");
 
 // フォルダパスの設定
-const inputDir = "gtfs_raw";
-const outputDir = "data";
+const repoRoot = path.join(__dirname, "..");
+const inputDir = path.join(repoRoot, "gtfs_raw");
+const outputDir = path.join(repoRoot, "server", "data");
 
 async function start() {
   if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir);
+    fs.mkdirSync(outputDir, { recursive: true });
   }
   console.log("GTFSデータの解析およびジオメトリ生成プロセスを開始します...");
 
@@ -143,7 +144,7 @@ async function start() {
   }
 
   // 既存の shapes.json を読み込み（再利用のため）
-  const existingShapesPath = path.join(process.cwd(), "data", "shapes.json");
+  const existingShapesPath = path.join(outputDir, "shapes.json");
   let existingShapes = {};
   if (fs.existsSync(existingShapesPath)) {
     existingShapes = JSON.parse(fs.readFileSync(existingShapesPath, "utf-8"));
