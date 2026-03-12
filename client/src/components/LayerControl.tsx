@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Layers, Map as MapIcon, Camera } from "lucide-react";
+// use Material Icons font for UI icons
 
 interface LayerControlProps {
   activeLayer: "pale" | "ortho";
@@ -34,21 +34,27 @@ const LayerControl: React.FC<LayerControlProps> = ({
         }}
         title="地図レイヤー切り替え"
       >
-        <Layers size={24} />
+        <span className="material-icons-outlined" aria-hidden>
+          layers
+        </span>
       </div>
       <div id="layer-menu" className={layerMenuOpen ? "show" : ""}>
         <div
           className={`layer-item ${activeLayer === "pale" ? "active" : ""}`}
           onClick={() => onLayerChange("pale")}
         >
-          <MapIcon size={22} />
+          <span className="material-icons-outlined" aria-hidden>
+            map
+          </span>
           淡色地図
         </div>
         <div
           className={`layer-item ${activeLayer === "ortho" ? "active" : ""}`}
           onClick={() => onLayerChange("ortho")}
         >
-          <Camera size={22} />
+          <span className="material-icons-outlined" aria-hidden>
+            photo_camera
+          </span>
           航空写真
         </div>
       </div>

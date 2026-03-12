@@ -96,6 +96,55 @@
   height: 100%;
 }
 
+/* Material Icons adjustments */
+.bus-icon-wrapper .material-icons.bus-marker-icon,
+.bus-icon-wrapper .material-icons-outlined.bus-marker-icon {
+  font-size: 34px;
+  line-height: 1;
+  color: inherit;
+}
+
+.close-btn .material-icons,
+.close-btn .material-icons-outlined {
+  font-size: 24px;
+  color: #5e5e5e;
+}
+
+.search-box .material-icons,
+.search-box .material-icons-outlined {
+  font-size: 20px;
+  color: #5e5e5e;
+  margin-right: 8px;
+}
+.search-clear-btn .material-icons,
+.search-clear-btn .material-icons-outlined {
+  font-size: 20px;
+  color: #5e5e5e;
+}
+.search-item .material-icons,
+.search-item .material-icons-outlined {
+  font-size: 20px;
+  color: #5e5e5e;
+  margin-right: 8px;
+}
+.delete-btn .material-icons,
+.delete-btn .material-icons-outlined {
+  font-size: 16px;
+  color: #5e5e5e;
+}
+
+#layer-btn .material-icons,
+#layer-btn .material-icons-outlined {
+  font-size: 24px;
+  color: #5e5e5e;
+}
+.layer-item .material-icons,
+.layer-item .material-icons-outlined {
+  font-size: 20px;
+  margin-right: 8px;
+  color: #5e5e5e;
+}
+
 .bus-label {
   position: absolute;
   bottom: 42px;
@@ -103,14 +152,14 @@
   transform: translateX(-50%);
   color: white;
   background: #d32f2f;
-  padding: 3px 10px;
-  border-radius: 15px;
-  font-size: 11px;
-  font-weight: bold;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 700;
   font-family: "Noto Sans JP", sans-serif;
-  border: 2px solid white;
+  border: 1px solid white;
   white-space: nowrap;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.22);
   pointer-events: none;
 }
 
@@ -121,6 +170,16 @@
 .bus-marker-container.compact .bus-icon-wrapper {
   width: 22px;
   height: 22px;
+}
+
+/* Shrink material icons inside compact bus markers and animate size */
+.bus-icon-wrapper .material-icons,
+.bus-icon-wrapper .material-icons-outlined {
+  transition: font-size 0.15s ease;
+}
+.bus-marker-container.compact .bus-icon-wrapper .material-icons,
+.bus-marker-container.compact .bus-icon-wrapper .material-icons-outlined {
+  font-size: 20px;
 }
 
 /* --- 詳細パネル（フローティング） --- */
@@ -229,6 +288,76 @@
   color: #444;
   margin-top: 4px;
   font-weight: bold;
+}
+
+.occupancy-info {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.occupancy-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.occupancy-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.occupancy-text {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.speed-info {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #5e5e5e;
+}
+
+.speed-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.speed-text {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.occupancy-info.occ-empty,
+.item-occupancy-mini.occ-empty {
+  color: #4fc3f7;
+}
+
+.occupancy-info.occ-many-seats,
+.item-occupancy-mini.occ-many-seats {
+  color: #34a853;
+}
+
+.occupancy-info.occ-standing-only,
+.item-occupancy-mini.occ-standing-only {
+  color: #fbbc04;
+}
+
+.occupancy-info.occ-full,
+.item-occupancy-mini.occ-full {
+  color: #ea4335;
+}
+
+.occupancy-info.occ-no-data,
+.item-occupancy-mini.occ-no-data {
+  color: #5e5e5e;
 }
 .panel-content {
   flex: 1;
@@ -351,6 +480,23 @@
 .item-info {
   font-size: 16px;
   line-height: 1.4;
+}
+
+.item-info-with-icon {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.item-info-main {
+  min-width: 0;
+}
+
+.item-occupancy-mini {
+  flex-shrink: 0;
+  font-size: 20px;
+  line-height: 1;
 }
 .item-via {
   font-size: 12px;

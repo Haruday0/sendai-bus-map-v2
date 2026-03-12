@@ -5,7 +5,7 @@ import React, {
   useLayoutEffect,
   useRef,
 } from "react";
-import { X } from "lucide-react";
+// use Material Icons font for simple UI icons
 import type { AppData, PanelTrip, Arrival, TripDetailResponse } from "../types";
 import {
   formatHeadsign,
@@ -13,6 +13,7 @@ import {
   addDelayToTime,
   timeToSec,
 } from "../utils";
+import { fetchBusPositions } from "../dataLoader";
 
 interface BusPanelProps {
   data: AppData;
@@ -22,8 +23,50 @@ interface BusPanelProps {
   stopDelays: Record<string, Record<string, number>>;
   zoom: number;
   onClose: () => void;
-  onSelectBus: (tripId: string, routeId: string, highlightId?: string) => void;
+  onSelectBus: (
+    tripId: string,
+    routeId: string,
+    highlightId?: string,
+    speedKmh?: number,
+    occupancyStatus?: string,
+  ) => void;
   onFlyToStop: (lng: number, lat: number) => void;
+}
+
+function getOccupancyDisplay(status?: string): {
+  icon: "group" | "group_off";
+  label: string;
+  toneClass: string;
+} {
+  switch (status) {
+    case "EMPTY":
+      return { icon: "group", label: "空いています", toneClass: "occ-empty" };
+    case "MANY_SEATS_AVAILABLE":
+      return {
+        icon: "group",
+        label: "座席に余裕があります",
+        toneClass: "occ-many-seats",
+      };
+    case "STANDING_ROOM_ONLY":
+      return {
+        icon: "group",
+        label: "混雑しています",
+        toneClass: "occ-standing-only",
+      };
+    case "FULL":
+      return {
+        icon: "group",
+        label: "非常に混雑しています",
+        toneClass: "occ-full",
+      };
+    case "NO_DATA_AVAILABLE":
+    default:
+      return {
+        icon: "group_off",
+        label: "混雑情報なし",
+        toneClass: "occ-no-data",
+      };
+  }
 }
 
 const BusPanel: React.FC<BusPanelProps> = ({
@@ -38,6 +81,9 @@ const BusPanel: React.FC<BusPanelProps> = ({
   onFlyToStop,
 }) => {
   const [currentTime, setCurrentTime] = useState("");
+  const [tripOccupancyMap, setTripOccupancyMap] = useState<
+    Record<string, string>
+  >({});
   const contentRef = useRef<HTMLDivElement>(null);
 
   // 時刻更新用タイマー
@@ -50,6 +96,41 @@ const BusPanel: React.FC<BusPanelProps> = ({
     return () => clearInterval(interval);
   }, []);
 
+  // バス停時刻表モード時に occupancy_status を取得して trip_id で引けるようにする
+  useEffect(() => {
+    if (!selectedStopId || selectedTrip) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadOccupancy = async () => {
+      try {
+        const buses = await fetchBusPositions();
+        if (cancelled) return;
+        const m: Record<string, string> = {};
+        buses.forEach((b) => {
+          if (b.trip_id) {
+            m[b.trip_id] = b.occupancy_status || "NO_DATA_AVAILABLE";
+          }
+        });
+        setTripOccupancyMap(m);
+      } catch {
+        if (!cancelled) {
+          setTripOccupancyMap({});
+        }
+      }
+    };
+
+    loadOccupancy();
+    const interval = setInterval(loadOccupancy, 10000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [selectedStopId, selectedTrip]);
+
   const currentSelectionKey = selectedTrip
     ? `trip-${selectedTrip.tripId}`
     : `stop-${selectedStopId}`;
@@ -60,6 +141,11 @@ const BusPanel: React.FC<BusPanelProps> = ({
     let office = "";
     let speedText = "";
     let items: React.ReactNode[] = [];
+    let occupancyInfo: {
+      icon: "group" | "group_off";
+      label: string;
+      toneClass: string;
+    } | null = null;
     let initialTargetId: string | null = null;
     const nowSec = timeToSec(currentTime);
 
@@ -71,8 +157,9 @@ const BusPanel: React.FC<BusPanelProps> = ({
       title = `[${routeName}] ${formatHeadsign(trip.headsign)}`;
       office = tripDetail.office_name || "";
       if (typeof selectedTrip.speedKmh === "number") {
-        speedText = `${selectedTrip.speedKmh.toFixed(1)} km/h`;
+        speedText = `${Math.floor(selectedTrip.speedKmh)} km/h`;
       }
+      occupancyInfo = getOccupancyDisplay(selectedTrip.occupancyStatus);
 
       // 遅延を加味した nextStopId の特定
       let nextStopId = selectedTrip.highlightId;
@@ -181,6 +268,7 @@ const BusPanel: React.FC<BusPanelProps> = ({
                 actual_stop_id: st.stop_id,
                 is_past: estimatedSec < nowSec,
                 delay_seconds: delay,
+                occupancy_status: tripOccupancyMap[tid] ?? "NO_DATA_AVAILABLE",
               });
             }
           });
@@ -207,6 +295,7 @@ const BusPanel: React.FC<BusPanelProps> = ({
             const estimatedTime = hasDelay
               ? addDelayToTime(bus.time, delay)
               : null;
+            const occupancy = getOccupancyDisplay(bus.occupancy_status);
 
             let isNext = false;
             if (!bus.is_past && !firstFutureFound) {
@@ -222,7 +311,13 @@ const BusPanel: React.FC<BusPanelProps> = ({
                 id={`arrival-${idx}`}
                 className={cls}
                 onClick={() =>
-                  onSelectBus(bus.trip_id, bus.route_id, bus.actual_stop_id)
+                  onSelectBus(
+                    bus.trip_id,
+                    bus.route_id,
+                    bus.actual_stop_id,
+                    undefined,
+                    bus.occupancy_status,
+                  )
                 }
               >
                 <div className="item-time">
@@ -239,14 +334,25 @@ const BusPanel: React.FC<BusPanelProps> = ({
                     <div>{bus.time.substring(0, 5)}</div>
                   )}
                 </div>
-                <div className="item-info">
-                  {bus.via && <div className="item-via">{bus.via} 経由</div>}
-                  {(data.routes[bus.route_id]?.short_name || bus.route_id) +
-                    "系統 " +
-                    formatHeadsign(bus.headsign)}
-                  {bus.platform && (
-                    <div className="item-platform">{bus.platform}番のりば</div>
-                  )}
+                <div className="item-info item-info-with-icon">
+                  <div className="item-info-main">
+                    {bus.via && <div className="item-via">{bus.via} 経由</div>}
+                    {(data.routes[bus.route_id]?.short_name || bus.route_id) +
+                      "系統 " +
+                      formatHeadsign(bus.headsign)}
+                    {bus.platform && (
+                      <div className="item-platform">
+                        {bus.platform}番のりば
+                      </div>
+                    )}
+                  </div>
+                  <span
+                    className={`material-icons-outlined item-occupancy-mini ${occupancy.toneClass}`}
+                    title={occupancy.label}
+                    aria-label={occupancy.label}
+                  >
+                    {occupancy.icon}
+                  </span>
                 </div>
               </div>
             );
@@ -255,13 +361,22 @@ const BusPanel: React.FC<BusPanelProps> = ({
       }
     }
 
-    return { items, title, via, office, speedText, initialTargetId };
+    return {
+      items,
+      title,
+      via,
+      office,
+      speedText,
+      initialTargetId,
+      occupancyInfo,
+    };
   }, [
     data,
     selectedStopId,
     selectedTrip,
     tripDetail,
     stopDelays,
+    tripOccupancyMap,
     currentTime,
     zoom,
     onSelectBus,
@@ -269,6 +384,14 @@ const BusPanel: React.FC<BusPanelProps> = ({
   ]);
 
   const lastSelectedKeyRef = useRef<string | null>(null);
+
+  // パネルが閉じられたとき（両方 null）にスクロール追跡をリセット
+  // これにより、同じバス停・バスを再タップしたときにも次のバスへスクロールが動作する
+  useEffect(() => {
+    if (!selectedStopId && !selectedTrip) {
+      lastSelectedKeyRef.current = null;
+    }
+  }, [selectedStopId, selectedTrip]);
 
   useLayoutEffect(() => {
     if (
@@ -299,18 +422,45 @@ const BusPanel: React.FC<BusPanelProps> = ({
         }}
         title="閉じる"
       >
-        <X size={24} />
+        <span className="material-icons-outlined" aria-hidden>
+          close
+        </span>
       </button>
       <div className="panel-header">
         {panelData.via && <div className="panel-via">{panelData.via}</div>}
         <div className="panel-title-row">
           <div className="panel-title">{panelData.title}</div>
-          {panelData.speedText && (
-            <div className="panel-speed">{panelData.speedText}</div>
-          )}
         </div>
         {panelData.office && (
           <div className="office-info">{panelData.office}</div>
+        )}
+        {selectedTrip && panelData.occupancyInfo && (
+          <div
+            className={`occupancy-info ${panelData.occupancyInfo.toneClass}`}
+          >
+            <div className="occupancy-left">
+              <span
+                className="material-icons-outlined occupancy-icon"
+                aria-hidden
+              >
+                {panelData.occupancyInfo.icon}
+              </span>
+              <span className="occupancy-text">
+                {panelData.occupancyInfo.label}
+              </span>
+            </div>
+            {panelData.speedText && (
+              <div className="speed-info">
+                <span
+                  className="material-icons-outlined speed-icon"
+                  aria-hidden
+                >
+                  speed
+                </span>
+                <span className="speed-text">{panelData.speedText}</span>
+              </div>
+            )}
+          </div>
         )}
       </div>
       <div className="panel-content" ref={contentRef}>

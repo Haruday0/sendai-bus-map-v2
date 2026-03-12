@@ -248,8 +248,15 @@ function App() {
       routeId: string,
       highlightId: string | null = null,
       speedKmh?: number,
+      occupancyStatus?: string,
     ) => {
-      setSelectedTrip({ tripId, routeId, highlightId, speedKmh });
+      setSelectedTrip({
+        tripId,
+        routeId,
+        highlightId,
+        speedKmh,
+        occupancyStatus,
+      });
       setSelectedStopId(null);
       setIsSearching(false);
     },

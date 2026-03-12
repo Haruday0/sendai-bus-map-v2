@@ -120,6 +120,7 @@ export interface PanelTrip {
   routeId: string;
   highlightId: string | null;
   speedKmh?: number;
+  occupancyStatus?: string;
 }
 
 /** バス停に到着する便の情報 */
@@ -134,6 +135,8 @@ export interface Arrival {
   is_past: boolean;
   /** 遅延秒数（リアルタイム情報がある場合のみ）*/
   delay_seconds?: number;
+  /** 混雑度合い（GTFS-RT occupancy_status） */
+  occupancy_status?: string;
 }
 
 /** サーバーから返されるバス位置情報 */
@@ -144,6 +147,7 @@ export interface BusPosition {
   headsign: string;
   position: [number, number]; // [lng, lat]
   speed_kmh?: number;
+  occupancy_status?: string;
   color: string;
   delay_seconds?: number;
   next_stop_id?: string;

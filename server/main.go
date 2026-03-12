@@ -46,7 +46,7 @@ type TripInfo struct {
 	ServiceID string     `json:"service_id"`
 	OfficeID  string     `json:"office_id"`
 	Via       string     `json:"via"`
-	Stops[]TripStop `json:"stops"`
+	Stops     []TripStop `json:"stops"`
 }
 
 // TripRealtimeUpdate はtrip_idをキーにした遅延情報 (サーバー内部用)
@@ -54,8 +54,8 @@ type TripRealtimeUpdate struct {
 	TripID     string           `json:"trip_id"`
 	RouteID    string           `json:"route_id"`
 	VehicleID  string           `json:"vehicle_id,omitempty"`
-	TripDelay  int64            `json:"trip_delay,omitempty"`   // 全体の遅延秒数
-	StopDelays map[string]int64 `json:"stop_delays,omitempty"`  // stop_id -> delay_seconds のマップ
+	TripDelay  int64            `json:"trip_delay,omitempty"`  // 全体の遅延秒数
+	StopDelays map[string]int64 `json:"stop_delays,omitempty"` // stop_id -> delay_seconds のマップ
 }
 
 // TimetablesData は route_id → trip_id → TripInfo のマップ
@@ -64,7 +64,7 @@ type TimetablesData map[string]map[string]TripInfo
 // ShapeData は1経路パターンの形状データ
 type ShapeData struct {
 	Coordinates [][]float64 `json:"coordinates"`
-	StopIndices[]int       `json:"stop_indices"`
+	StopIndices []int       `json:"stop_indices"`
 }
 
 // ShapesData はパターンキー → ShapeData のマップ
@@ -72,7 +72,7 @@ type ShapesData map[string]ShapeData
 
 // CalendarEntry は1サービスの運行カレンダー情報
 type CalendarEntry struct {
-	Days[]string `json:"days"`
+	Days  []string `json:"days"`
 	Start string   `json:"start"`
 	End   string   `json:"end"`
 }
@@ -90,7 +90,7 @@ type CalendarDateException struct {
 // ExtraData は extra.json の構造
 type ExtraData struct {
 	Offices       map[string]string       `json:"offices"`
-	CalendarDates[]CalendarDateException `json:"calendar_dates"`
+	CalendarDates []CalendarDateException `json:"calendar_dates"`
 }
 
 // RouteInfo は1路線の基本情報
@@ -130,8 +130,9 @@ type BusPosition struct {
 	RouteID              string    `json:"route_id"`
 	RouteName            string    `json:"route_name"`
 	Headsign             string    `json:"headsign"`
-	Position[]float64 `json:"position"` // [lng, lat]
+	Position             []float64 `json:"position"` // [lng, lat]
 	SpeedKmh             float64   `json:"speed_kmh"`
+	OccupancyStatus      string    `json:"occupancy_status,omitempty"`
 	Color                string    `json:"color"`
 	DelaySeconds         int64     `json:"delay_seconds,omitempty"`          // 遅延秒数
 	NextStopID           string    `json:"next_stop_id,omitempty"`           // 次のバス停 ID
@@ -154,7 +155,7 @@ var (
 	vehicleCache = struct {
 		mu        sync.Mutex
 		fetchedAt time.Time
-		buses[]BusPosition
+		buses     []BusPosition
 		fetching  bool
 		fetchDone chan struct{}
 	}{}
@@ -324,14 +325,19 @@ func fetchVehiclePositionsFromODPT() ([]BusPosition, error) {
 		if vehicle.GetVehicle() != nil {
 			vehicleID = vehicle.GetVehicle().GetId()
 		}
+		occupancyStatus := vehicle.GetOccupancyStatus().String()
+		if occupancyStatus == "" || occupancyStatus == "OCCUPANCY_STATUS_UNKNOWN" {
+			occupancyStatus = "NO_DATA_AVAILABLE"
+		}
 
 		buses = append(buses, BusPosition{
 			TripID:               tripID,
 			RouteID:              routeID,
 			RouteName:            routeName,
 			Headsign:             headsignByTrip(routeID, tripID),
-			Position:[]float64{float64(pos.GetLongitude()), float64(pos.GetLatitude())},
+			Position:             []float64{float64(pos.GetLongitude()), float64(pos.GetLatitude())},
 			SpeedKmh:             float64(pos.GetSpeed()) * 3.6,
+			OccupancyStatus:      occupancyStatus,
 			Color:                color,
 			DelaySeconds:         delaySeconds,
 			NextStopID:           nextStopID,
@@ -390,7 +396,7 @@ func getRealtimeBusPositions() ([]BusPosition, error) {
 	}
 }
 
-func filterBusesByBounds(buses[]BusPosition, minLat, maxLat, minLng, maxLng float64) []BusPosition {
+func filterBusesByBounds(buses []BusPosition, minLat, maxLat, minLng, maxLng float64) []BusPosition {
 	filtered := make([]BusPosition, 0, len(buses))
 	for _, bus := range buses {
 		if len(bus.Position) < 2 {
@@ -540,7 +546,7 @@ func isServiceRunningToday(serviceID string) bool {
 	return false
 }
 
-func calculateBusPosition(trip TripInfo, nowSec int, patternKey string)[]float64 {
+func calculateBusPosition(trip TripInfo, nowSec int, patternKey string) []float64 {
 	shape, ok := shapesCache[patternKey]
 	if !ok || len(shape.Coordinates) == 0 || len(shape.StopIndices) == 0 {
 		return nil
@@ -567,10 +573,10 @@ func calculateBusPosition(trip TripInfo, nowSec int, patternKey string)[]float64
 	return nil
 }
 
-func calculateAllBusPositions()[]BusPosition {
+func calculateAllBusPositions() []BusPosition {
 	now := nowInJST()
 	nowSec := now.Hour()*3600 + now.Minute()*60 + now.Second()
-	result :=[]BusPosition{}
+	result := []BusPosition{}
 
 	for routeID, trips := range timetablesCache {
 		for tripID, trip := range trips {
@@ -657,7 +663,7 @@ func fetchTripUpdatesFromODPT() (map[string]*TripRealtimeUpdate, error) {
 		}
 
 		delayMap := make(map[string]int64)
-		
+
 		// 各バス停ごとの遅延を愚直に保存
 		for _, stu := range tu.GetStopTimeUpdate() {
 			stopID := stu.GetStopId()
@@ -877,7 +883,7 @@ func main() {
 		}
 
 		// リアルタイムデータをそのまま渡す
-		delays := make(map[string]map[string]int64) 
+		delays := make(map[string]map[string]int64)
 		if tripUpdates, err := getRealtimeTripUpdates(); err == nil {
 			for routeID, trips := range filteredTimetables {
 				for tripID := range trips {

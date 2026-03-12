@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Search, X, MapPin, History } from "lucide-react";
+// use Material Icons font for UI icons
 import type { StopsData } from "../types";
 import {
   getSearchHistory,
@@ -83,7 +83,9 @@ const SearchBox: React.FC<SearchBoxProps> = ({
                 className="search-item"
                 onClick={() => handleSelect(s.name, s.lat, s.lng, id)}
               >
-                <History size={20} />
+                <span className="material-icons-outlined" aria-hidden>
+                  history
+                </span>
                 <div className="search-item-info">
                   <div className="search-item-name">{s.name}</div>
                   <div className="search-item-yomi">{s.yomi}</div>
@@ -96,7 +98,9 @@ const SearchBox: React.FC<SearchBoxProps> = ({
                     showHistory();
                   }}
                 >
-                  <X size={18} />
+                  <span className="material-icons-outlined" aria-hidden>
+                    close
+                  </span>
                 </span>
               </div>
             );
@@ -225,7 +229,9 @@ const SearchBox: React.FC<SearchBoxProps> = ({
               className="search-item"
               onClick={() => handleSelect(s.name, s.lat, s.lng, s.id)}
             >
-              <MapPin size={20} />
+              <span className="material-icons-outlined" aria-hidden>
+                place
+              </span>
               <div className="search-item-info">
                 <div className="search-item-name">{s.name}</div>
                 <div className="search-item-yomi">{s.yomi}</div>
@@ -284,7 +290,9 @@ const SearchBox: React.FC<SearchBoxProps> = ({
   return (
     <div id="search-container">
       <div className="search-box">
-        <Search size={20} />
+        <span className="material-icons-outlined" aria-hidden>
+          search
+        </span>
         <input
           ref={inputRef}
           type="text"
@@ -296,7 +304,9 @@ const SearchBox: React.FC<SearchBoxProps> = ({
         />
         {searchQuery && (
           <span className="search-clear-btn" onClick={clearSearch}>
-            <X size={20} />
+            <span className="material-icons-outlined" aria-hidden>
+              close
+            </span>
           </span>
         )}
       </div>

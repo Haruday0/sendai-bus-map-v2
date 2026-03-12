@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { createRoot } from "react-dom/client";
-import { BusFront } from "lucide-react";
+// using Material Icons font for markers
 import type { AppData, PanelTrip, BusPosition } from "../types";
 import { fetchBusPositions } from "../dataLoader";
 import { formatHeadsign } from "../utils";
@@ -17,6 +17,7 @@ interface MapContainerProps {
     routeId: string,
     highlightId?: string,
     speedKmh?: number,
+    occupancyStatus?: string,
   ) => void;
   onMapClick: () => void;
   onMoveStart: () => void;
@@ -49,7 +50,11 @@ function createBusMarkerElement(
   iconWrapper.className = "bus-icon-wrapper";
   container.appendChild(iconWrapper);
   const root = createRoot(iconWrapper);
-  root.render(<BusFront size={34} strokeWidth={2} />);
+  root.render(
+    <span className="material-icons-outlined bus-marker-icon" aria-hidden>
+      directions_bus
+    </span>,
+  );
 
   container.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -208,7 +213,13 @@ const MapContainer: React.FC<MapContainerProps> = ({
             bus.route_name,
             bus.headsign,
             () => {
-              onBusClick(tripId, bus.route_id, undefined, bus.speed_kmh);
+              onBusClick(
+                tripId,
+                bus.route_id,
+                undefined,
+                bus.speed_kmh,
+                bus.occupancy_status,
+              );
             },
           );
 
