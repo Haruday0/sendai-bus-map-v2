@@ -21,6 +21,7 @@ function App() {
     stops: {},
     shapes: {},
     timetables: {},
+    delays: {},
     calendar: {},
     routes: {},
     extra: { offices: {}, calendar_dates: [] },
@@ -28,6 +29,11 @@ function App() {
 
   // バス詳細データ（selectedTripが選択されたときにサーバーから取得）
   const [tripDetail, setTripDetail] = useState<TripDetailResponse | null>(null);
+
+  // バス停時刻表の遅延情報（route_id → trip_id → delay_seconds）
+  const [stopDelays, setStopDelays] = useState<
+    Record<string, Record<string, number>>
+  >({});
 
   // --- 地図インスタンスの参照 (FlyTo用) ---
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -62,12 +68,15 @@ function App() {
   useEffect(() => {
     if (!selectedTrip) return;
 
+    let cancelled = false;
+
     const loadTripDetail = async () => {
       try {
         const detail = await fetchTripDetails(
           selectedTrip.routeId,
           selectedTrip.tripId,
         );
+        if (cancelled) return;
         setTripDetail(detail);
 
         // 取得したバス停情報とtimetables、shapesを data にマージ
@@ -95,24 +104,41 @@ function App() {
         });
       } catch (e) {
         console.error("failed to load trip details", e);
-        setTripDetail(null);
+        if (!cancelled) {
+          setTripDetail(null);
+        }
       }
     };
+
     loadTripDetail();
+
+    const interval = setInterval(loadTripDetail, 10000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [selectedTrip]);
 
   // selectedStopId が変更されたら、サーバーからそのバス停の時刻表を取得
   useEffect(() => {
     if (!selectedStopId) {
+      setStopDelays({});
+      setData((prev) => ({ ...prev, delays: {} }));
       return;
     }
+
+    let cancelled = false;
 
     const loadStopTimetable = async () => {
       try {
         const timetableData = await fetchStopTimetable(selectedStopId);
+        if (cancelled) return;
+        // 遅延情報を保存
+        setStopDelays(timetableData.delays ?? {});
         // 取得した時刻表データを data.timetables にマージ
         setData((prev) => ({
           ...prev,
+          delays: timetableData.delays ?? {},
           timetables: {
             ...prev.timetables,
             ...timetableData.timetables,
@@ -122,7 +148,14 @@ function App() {
         console.error("failed to load stop timetable", e);
       }
     };
+
     loadStopTimetable();
+
+    const interval = setInterval(loadStopTimetable, 10000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [selectedStopId]);
 
   // 地図の移動に合わせて stops のみを fetchStopsByBounds で取得
@@ -210,8 +243,13 @@ function App() {
   }, []);
 
   const handleBusClick = useCallback(
-    (tripId: string, routeId: string, highlightId: string | null = null) => {
-      setSelectedTrip({ tripId, routeId, highlightId });
+    (
+      tripId: string,
+      routeId: string,
+      highlightId: string | null = null,
+      speedKmh?: number,
+    ) => {
+      setSelectedTrip({ tripId, routeId, highlightId, speedKmh });
       setSelectedStopId(null);
       setIsSearching(false);
     },
@@ -274,6 +312,7 @@ function App() {
         selectedStopId={selectedStopId}
         selectedTrip={selectedTrip}
         tripDetail={tripDetail}
+        stopDelays={stopDelays}
         zoom={zoom}
         onClose={handleClosePanel}
         onSelectBus={handleBusClick}

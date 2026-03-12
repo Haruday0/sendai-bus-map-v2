@@ -91,6 +91,8 @@ export interface TripStop {
   time: string;
   /** バス停ID */
   stop_id: string;
+  /** 遅延秒数（リアルタイム情報がある場合のみ）*/
+  delay_seconds?: number;
 }
 
 /** 1便（トリップ）の情報 */
@@ -117,6 +119,7 @@ export interface PanelTrip {
   tripId: string;
   routeId: string;
   highlightId: string | null;
+  speedKmh?: number;
 }
 
 /** バス停に到着する便の情報 */
@@ -129,6 +132,8 @@ export interface Arrival {
   platform: string;
   actual_stop_id: string;
   is_past: boolean;
+  /** 遅延秒数（リアルタイム情報がある場合のみ）*/
+  delay_seconds?: number;
 }
 
 /** サーバーから返されるバス位置情報 */
@@ -138,7 +143,10 @@ export interface BusPosition {
   route_name: string;
   headsign: string;
   position: [number, number]; // [lng, lat]
+  speed_kmh?: number;
   color: string;
+  delay_seconds?: number;
+  next_stop_id?: string;
 }
 
 /** サーバーから返される便詳細情報（全停車バス停情報を含む） */
@@ -151,6 +159,10 @@ export interface TripDetailResponse {
   stops: StopsData; // この便が停車する全バス停情報
   shape: ShapeData | null; // この便の経路形状
   office_name: string;
+  /** 各停車地点の遅延秒数（stop_id → delay_seconds） */
+  delays?: Record<string, number>;
+  /** この便全体の遅延秒数 */
+  trip_delay?: number;
 }
 
 /** サーバーから返されるバス停時刻表情報 */
@@ -158,6 +170,8 @@ export interface StopTimetableResponse {
   stop_id: string;
   stop_name: string;
   timetables: TimetablesData; // このバス停に停車する便のみ
+  /** 各便の遅延秒数（route_id → trip_id → delay_seconds） */
+  delays?: Record<string, Record<string, number>>;
 }
 
 // --- 全データをまとめた型 ---
@@ -167,6 +181,7 @@ export interface AppData {
   stops: StopsData;
   shapes: ShapesData;
   timetables: TimetablesData;
+  delays: Record<string, Record<string, number>>;
   calendar: CalendarData;
   routes: RoutesData;
   extra: ExtraData;

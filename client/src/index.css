@@ -23,3 +23,6 @@ select {
   font-optical-sizing: inherit;
   -webkit-font-smoothing: antialiased;
 }
+
+/* 国土地理院タイルの出典（マップ右下） */
+/* 国土地理院の出典表示は MapLibre の組み込みアトリビューションを使用します */

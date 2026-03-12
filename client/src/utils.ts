@@ -9,6 +9,19 @@ export function timeToSec(t: string): number {
   return parts[0] * 3600 + parts[1] * 60 + (parts[2] || 0);
 }
 
+/** 時刻文字列 "HH:MM:SS" に秒数を加算して "HH:MM" 形式で返す */
+export function addSecondsToTime(time: string, seconds: number): string {
+  const totalSec = timeToSec(time) + seconds;
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/** 時刻文字列 "HH:MM:SS" に遅延秒数を加算して "HH:MM" 形式で返す */
+export function addDelayToTime(time: string, delaySeconds: number): string {
+  return addSecondsToTime(time, delaySeconds);
+}
+
 /** 行先表示のフォーマット */
 export function formatHeadsign(headsign: string): string {
   if (headsign.includes("循環")) return headsign;

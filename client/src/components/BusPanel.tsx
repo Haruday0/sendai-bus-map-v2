@@ -7,13 +7,19 @@ import React, {
 } from "react";
 import { X } from "lucide-react";
 import type { AppData, PanelTrip, Arrival, TripDetailResponse } from "../types";
-import { formatHeadsign, isServiceRunningToday } from "../utils";
+import {
+  formatHeadsign,
+  isServiceRunningToday,
+  addDelayToTime,
+  timeToSec,
+} from "../utils";
 
 interface BusPanelProps {
   data: AppData;
   selectedStopId: string | null;
   selectedTrip: PanelTrip | null;
   tripDetail: TripDetailResponse | null;
+  stopDelays: Record<string, Record<string, number>>;
   zoom: number;
   onClose: () => void;
   onSelectBus: (tripId: string, routeId: string, highlightId?: string) => void;
@@ -25,6 +31,7 @@ const BusPanel: React.FC<BusPanelProps> = ({
   selectedStopId,
   selectedTrip,
   tripDetail,
+  stopDelays,
   zoom,
   onClose,
   onSelectBus,
@@ -51,27 +58,44 @@ const BusPanel: React.FC<BusPanelProps> = ({
     let title = "";
     let via = "";
     let office = "";
+    let speedText = "";
     let items: React.ReactNode[] = [];
     let initialTargetId: string | null = null;
+    const nowSec = timeToSec(currentTime);
 
     if (selectedTrip && tripDetail) {
-      // 便詳細表示モード（サーバーから取得したデータを使用）
+      // 便詳細表示モード
       const trip = tripDetail.trip;
       const routeName = tripDetail.route_name;
       via = trip.via ? `${trip.via} 経由` : "";
       title = `[${routeName}] ${formatHeadsign(trip.headsign)}`;
       office = tripDetail.office_name || "";
+      if (typeof selectedTrip.speedKmh === "number") {
+        speedText = `${selectedTrip.speedKmh.toFixed(1)} km/h`;
+      }
 
+      // 遅延を加味した nextStopId の特定
       let nextStopId = selectedTrip.highlightId;
       if (!selectedTrip.highlightId) {
-        const next = trip.stops.find((st) => st.time > currentTime);
+        const next = trip.stops.find((st) => {
+          const d = tripDetail.delays?.[st.stop_id] ?? 0;
+          const estimatedSec = timeToSec(st.time) + d;
+          return estimatedSec >= nowSec;
+        });
         if (next) nextStopId = next.stop_id;
       }
       initialTargetId = nextStopId ? `stop-${nextStopId}` : null;
 
       items = trip.stops.map((st, index) => {
         const s = tripDetail.stops[st.stop_id];
-        const isPast = st.time < currentTime;
+
+        // サーバーから渡された本当の遅延秒数を取得
+        const delay = tripDetail.delays?.[st.stop_id] ?? 0;
+        const estimatedSec = timeToSec(st.time) + delay;
+        const isPast = estimatedSec < nowSec;
+        const hasDelay = !isPast && delay >= 60; // 1分以上なら遅延扱い
+        const estimatedTime = hasDelay ? addDelayToTime(st.time, delay) : null;
+
         const isHighlight = st.stop_id === selectedTrip.highlightId;
         const isNextStop =
           !selectedTrip.highlightId && st.stop_id === nextStopId;
@@ -87,7 +111,18 @@ const BusPanel: React.FC<BusPanelProps> = ({
               if (s) onFlyToStop(s.lng, s.lat);
             }}
           >
-            <div className="item-time">{st.time.substring(0, 5)}</div>
+            <div className="item-time">
+              {hasDelay ? (
+                <div className="delay-time-inline">
+                  <del className="delay-original-time">
+                    {st.time.substring(0, 5)}
+                  </del>
+                  <span className="delay-estimated-time">{estimatedTime}</span>
+                </div>
+              ) : (
+                <div>{st.time.substring(0, 5)}</div>
+              )}
+            </div>
             <div className="item-info">
               {s ? s.name : "..."}
               {s?.platform && (
@@ -98,7 +133,6 @@ const BusPanel: React.FC<BusPanelProps> = ({
         );
       });
     } else if (selectedTrip && !tripDetail) {
-      // 便詳細読み込み中
       items = [
         <div key="loading" className="empty-message">
           読み込み中...
@@ -108,7 +142,6 @@ const BusPanel: React.FC<BusPanelProps> = ({
       // バス停時刻表モード
       const stop = data.stops[selectedStopId];
       if (stop) {
-        // レガシーと同様、ズームレベル 16.5 未満なら同名バス停を集約
         const isGrouped = zoom < 16.5;
         const targetIds = isGrouped
           ? Object.keys(data.stops).filter(
@@ -133,6 +166,11 @@ const BusPanel: React.FC<BusPanelProps> = ({
             const st = trip.stops.find((s) => targetIds.includes(s.stop_id));
             if (st) {
               const pole = data.stops[st.stop_id];
+              // サーバーから渡された本物の遅延データを取得
+              const delay =
+                data.delays?.[rid]?.[tid] ?? stopDelays?.[rid]?.[tid] ?? 0;
+              const estimatedSec = timeToSec(st.time) + delay;
+
               allArrivals.push({
                 time: st.time,
                 route_id: rid,
@@ -141,7 +179,8 @@ const BusPanel: React.FC<BusPanelProps> = ({
                 via: trip.via,
                 platform: pole?.platform || "",
                 actual_stop_id: st.stop_id,
-                is_past: st.time < currentTime,
+                is_past: estimatedSec < nowSec,
+                delay_seconds: delay,
               });
             }
           });
@@ -154,9 +193,21 @@ const BusPanel: React.FC<BusPanelProps> = ({
             </div>,
           ];
         } else {
-          allArrivals.sort((a, b) => a.time.localeCompare(b.time));
+          allArrivals.sort((a, b) => {
+            // 遅延を含めた到着予定時間でソートする
+            const aSec = timeToSec(a.time) + (a.delay_seconds || 0);
+            const bSec = timeToSec(b.time) + (b.delay_seconds || 0);
+            return aSec - bSec;
+          });
+
           let firstFutureFound = false;
           items = allArrivals.map((bus, idx) => {
+            const delay = bus.delay_seconds ?? 0;
+            const hasDelay = !bus.is_past && delay >= 60;
+            const estimatedTime = hasDelay
+              ? addDelayToTime(bus.time, delay)
+              : null;
+
             let isNext = false;
             if (!bus.is_past && !firstFutureFound) {
               firstFutureFound = true;
@@ -164,6 +215,7 @@ const BusPanel: React.FC<BusPanelProps> = ({
               initialTargetId = `arrival-${idx}`;
             }
             const cls = `item-row ${bus.is_past ? "past" : "future"} ${isNext ? "next-stop" : ""}`;
+
             return (
               <div
                 key={idx}
@@ -173,7 +225,20 @@ const BusPanel: React.FC<BusPanelProps> = ({
                   onSelectBus(bus.trip_id, bus.route_id, bus.actual_stop_id)
                 }
               >
-                <div className="item-time">{bus.time.substring(0, 5)}</div>
+                <div className="item-time">
+                  {hasDelay ? (
+                    <div className="delay-time-inline">
+                      <del className="delay-original-time">
+                        {bus.time.substring(0, 5)}
+                      </del>
+                      <span className="delay-estimated-time">
+                        {estimatedTime}
+                      </span>
+                    </div>
+                  ) : (
+                    <div>{bus.time.substring(0, 5)}</div>
+                  )}
+                </div>
                 <div className="item-info">
                   {bus.via && <div className="item-via">{bus.via} 経由</div>}
                   {(data.routes[bus.route_id]?.short_name || bus.route_id) +
@@ -190,19 +255,19 @@ const BusPanel: React.FC<BusPanelProps> = ({
       }
     }
 
-    return { items, title, via, office, initialTargetId };
+    return { items, title, via, office, speedText, initialTargetId };
   }, [
     data,
     selectedStopId,
     selectedTrip,
     tripDetail,
+    stopDelays,
     currentTime,
     zoom,
     onSelectBus,
     onFlyToStop,
   ]);
 
-  // スクロール制御: 選択が変わった初回のみターゲット位置へスクロール
   const lastSelectedKeyRef = useRef<string | null>(null);
 
   useLayoutEffect(() => {
@@ -238,7 +303,12 @@ const BusPanel: React.FC<BusPanelProps> = ({
       </button>
       <div className="panel-header">
         {panelData.via && <div className="panel-via">{panelData.via}</div>}
-        <div className="panel-title">{panelData.title}</div>
+        <div className="panel-title-row">
+          <div className="panel-title">{panelData.title}</div>
+          {panelData.speedText && (
+            <div className="panel-speed">{panelData.speedText}</div>
+          )}
+        </div>
         {panelData.office && (
           <div className="office-info">{panelData.office}</div>
         )}

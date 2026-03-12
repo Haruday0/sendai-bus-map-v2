@@ -12,7 +12,12 @@ interface MapContainerProps {
   activeLayer: "pale" | "ortho";
   selectedTrip: PanelTrip | null;
   onStopClick: (id: string, zoom?: number) => void;
-  onBusClick: (tripId: string, routeId: string, highlightId?: string) => void;
+  onBusClick: (
+    tripId: string,
+    routeId: string,
+    highlightId?: string,
+    speedKmh?: number,
+  ) => void;
   onMapClick: () => void;
   onMoveStart: () => void;
   onZoomChange: (zoom: number) => void;
@@ -203,7 +208,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
             bus.route_name,
             bus.headsign,
             () => {
-              onBusClick(tripId, bus.route_id);
+              onBusClick(tripId, bus.route_id, undefined, bus.speed_kmh);
             },
           );
 
@@ -380,7 +385,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
             ],
             tileSize: 256,
             attribution:
-              '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">地理院地図</a>',
+              '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener noreferrer">地理院タイル</a>',
             maxzoom: 18,
           },
           "gsi-ortho": {
@@ -388,7 +393,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
             tiles: ["https://cyberjapandata.gsi.go.jp/xyz/ort/{z}/{x}/{y}.jpg"],
             tileSize: 256,
             attribution:
-              '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">地理院地図</a>',
+              '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener noreferrer">地理院タイル</a>',
             maxzoom: 18,
           },
         },
@@ -404,7 +409,6 @@ const MapContainer: React.FC<MapContainerProps> = ({
       },
       center: [140.8824, 38.2601],
       zoom: 15,
-      attributionControl: false,
     });
 
     mapRef.current = map;
@@ -457,6 +461,9 @@ const MapContainer: React.FC<MapContainerProps> = ({
       } catch {
         // noop
       }
+
+      // MapLibre の組み込みアトリビューションコントロールを利用するため、
+      // カスタムの出典要素は追加しない。
     });
 
     // バス更新の定期実行は refs 経由で行う（ハンドラが変わっても参照は最新）
@@ -492,78 +499,15 @@ const MapContainer: React.FC<MapContainerProps> = ({
     };
   }, []);
 
-  // 不活動タイマーとアクティビティリスナー
+  // ページ可視状態のみで更新停止を制御（不活動タイマーは削除）
   useEffect(() => {
-    lastActivityTimeRef.current = Date.now();
-
-    const resetActivityTimer = () => {
-      lastActivityTimeRef.current = Date.now();
-
-      // 既に停止している場合は再開
-      if (isUpdatesPaused) {
-        setIsUpdatesPaused(false);
-      }
-
-      // 既存のタイマーをクリア
-      if (inactivityTimerRef.current) {
-        clearTimeout(inactivityTimerRef.current);
-      }
-
-      // 新しい 3 分タイマーをセット
-      inactivityTimerRef.current = setTimeout(
-        () => {
-          setIsUpdatesPaused(true);
-        },
-        3 * 60 * 1000,
-      ); // 3 分 = 180,000 ms
-    };
-
-    const map = mapRef.current;
-    if (!map) return;
-
-    // 地図操作を捕捉するイベントリスナー
-    map.on("movestart", resetActivityTimer);
-    map.on("dragstart", resetActivityTimer);
-    map.on("zoomstart", resetActivityTimer);
-
-    // その他のホイール / タッチ操作
-    const mapContainer = mapRef.current?.getContainer?.();
-    if (mapContainer) {
-      mapContainer.addEventListener("wheel", resetActivityTimer, {
-        passive: true,
-      });
-      mapContainer.addEventListener("touchstart", resetActivityTimer, {
-        passive: true,
-      });
-      mapContainer.addEventListener("touchmove", resetActivityTimer, {
-        passive: true,
-      });
-    }
-
-    // 初期タイマー開始
-    inactivityTimerRef.current = setTimeout(
-      () => {
-        setIsUpdatesPaused(true);
-      },
-      3 * 60 * 1000,
-    );
-
+    // Page Visibility API だけを使用し、不活動タイマーは削除
     return () => {
-      if (map) {
-        map.off("movestart", resetActivityTimer);
-        map.off("dragstart", resetActivityTimer);
-        map.off("zoomstart", resetActivityTimer);
-      }
-      if (mapContainer) {
-        mapContainer.removeEventListener("wheel", resetActivityTimer);
-        mapContainer.removeEventListener("touchstart", resetActivityTimer);
-        mapContainer.removeEventListener("touchmove", resetActivityTimer);
-      }
       if (inactivityTimerRef.current) {
         clearTimeout(inactivityTimerRef.current);
       }
     };
-  }, [isUpdatesPaused]);
+  }, []);
 
   // レイヤー切り替え同期
   useEffect(() => {

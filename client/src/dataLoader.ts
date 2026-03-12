@@ -10,9 +10,13 @@ import type {
 } from "./types";
 
 const DATA_BASE_URL = "/data";
-const API_BASE =
+let API_BASE =
   import.meta.env.VITE_API_BASE_URL ||
   "https://bus-map-bzd9hhfedye5crcq.japaneast-01.azurewebsites.net/api"; // バックエンド API ベース
+// /api で終わっていない場合は追加
+if (!API_BASE.endsWith("/api")) {
+  API_BASE += "/api";
+}
 
 /**
  * 指定パスの JSON を fetch して型付きで返す（旧実装：静的ファイル用）
@@ -51,7 +55,7 @@ export async function loadAllData(): Promise<AppData> {
       fetchJson<ExtraData>("extra.json"),
     ]);
 
-  return { stops, shapes, timetables, calendar, routes, extra };
+  return { stops, shapes, timetables, delays: {}, calendar, routes, extra };
 }
 
 /**
