@@ -775,3 +775,70 @@
 .resume-button:active {
   background-color: #3d8b40;
 }
+
+/* --- GitHubフッターリンク --- */
+#github-footer-link {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  z-index: 6500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #e6e6e6;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+  color: #5e5e5e;
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  transition:
+    transform 0.2s,
+    box-shadow 0.2s,
+    background 0.2s;
+}
+
+#github-footer-link:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.2);
+  background: #fff;
+}
+
+#github-footer-link:focus-visible {
+  outline: 2px solid #00703c;
+  outline-offset: 2px;
+}
+
+#github-footer-link .github-mark {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+}
+
+/* バスパネル表示中はリンクを少し上へ逃がして重なりを避ける */
+#github-footer-link.panel-open {
+  bottom: calc(60% + 24px);
+}
+
+@media (max-width: 767px) {
+  #github-footer-link {
+    left: 6px;
+    bottom: 6px;
+    min-height: 30px;
+    padding: 0 8px;
+    font-size: 11px;
+  }
+
+  #github-footer-link .github-mark {
+    width: 13px;
+    height: 13px;
+  }
+
+  #github-footer-link.panel-open {
+    bottom: calc(60% + 16px);
+  }
+}
