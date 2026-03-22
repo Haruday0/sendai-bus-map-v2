@@ -22,6 +22,7 @@ interface BusPanelProps {
   tripDetail: TripDetailResponse | null;
   stopDelays: Record<string, Record<string, number>>;
   zoom: number;
+  timetableReadyForStop?: string | null;
   onClose: () => void;
   onSelectBus: (
     tripId: string,
@@ -76,6 +77,7 @@ const BusPanel: React.FC<BusPanelProps> = ({
   tripDetail,
   stopDelays,
   zoom,
+  timetableReadyForStop,
   onClose,
   onSelectBus,
   onFlyToStop,
@@ -399,16 +401,26 @@ const BusPanel: React.FC<BusPanelProps> = ({
       contentRef.current &&
       panelData.initialTargetId
     ) {
+      // バス停モードの場合、そのバス停の時刻表がサーバーから取得されるまで待機
+      // （キャッシュデータで誤った位置にスクロールしてしまう問題の回避）
+      if (selectedStopId && timetableReadyForStop !== selectedStopId) return;
+
       const el = document.getElementById(panelData.initialTargetId);
       if (el) {
         const parent = contentRef.current;
         const offset = selectedTrip ? 40 : 0;
-        const denom = selectedTrip ? 2 : 3;
+        const denom = 3.5;
         parent.scrollTop = el.offsetTop - parent.clientHeight / denom + offset;
         lastSelectedKeyRef.current = currentSelectionKey;
       }
     }
-  }, [currentSelectionKey, panelData.initialTargetId, selectedTrip]);
+  }, [
+    currentSelectionKey,
+    panelData.initialTargetId,
+    selectedTrip,
+    timetableReadyForStop,
+    selectedStopId,
+  ]);
 
   const isOpen = !!(selectedStopId || selectedTrip);
 

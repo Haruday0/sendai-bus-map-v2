@@ -44,6 +44,11 @@ function App() {
   const [selectedTrip, setSelectedTrip] = useState<PanelTrip | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [zoom, setZoom] = useState(15);
+  // このバス停IDの時刻表が1回目のフェッチ完了済か管理する
+  // （キャッシュされた旧データで誤スクロールしないため）
+  const [timetableReadyForStop, setTimetableReadyForStop] = useState<
+    string | null
+  >(null);
 
   // ==================== データ読み込み ====================
   // 初期化時に必須データ（calendar, routes, extra）のみを取得
@@ -121,13 +126,10 @@ function App() {
 
   // selectedStopId が変更されたら、サーバーからそのバス停の時刻表を取得
   useEffect(() => {
-    if (!selectedStopId) {
-      setStopDelays({});
-      setData((prev) => ({ ...prev, delays: {} }));
-      return;
-    }
+    if (!selectedStopId) return;
 
     let cancelled = false;
+    let isFirstLoad = true;
 
     const loadStopTimetable = async () => {
       try {
@@ -144,6 +146,12 @@ function App() {
             ...timetableData.timetables,
           },
         }));
+        // 最初のフェッチ完了時のみスクロール許可フラグを立てる
+        // （10秒ごとの更新では再スクロールしない）
+        if (isFirstLoad) {
+          isFirstLoad = false;
+          setTimetableReadyForStop(selectedStopId);
+        }
       } catch (e) {
         console.error("failed to load stop timetable", e);
       }
@@ -213,16 +221,26 @@ function App() {
           (s) => s.name === stopName,
         );
         if (targetStop) {
-          // 少し遅延させてからバス停を選択（マーカーが描画されるのを待つ）
-          setTimeout(() => {
-            const firstStopId = Object.keys(stops).find(
-              (id) => stops[id].name === stopName,
-            );
-            if (firstStopId) {
-              setSelectedStopId(firstStopId);
-              setSelectedTrip(null);
+          const firstStopId = Object.keys(stops).find(
+            (id) => stops[id].name === stopName,
+          );
+          if (firstStopId) {
+            // 時刻表データを先読みしてから選択（キャッシュデータで誤スクロールしないため）
+            try {
+              const timetableData = await fetchStopTimetable(firstStopId);
+              // React 18のバッチ処理でこれど3つのセットは1レンダーにまとめられる
+              setData((prev) => ({
+                ...prev,
+                delays: timetableData.delays ?? {},
+                timetables: { ...prev.timetables, ...timetableData.timetables },
+              }));
+              setTimetableReadyForStop(firstStopId);
+            } catch (e) {
+              console.error("時刻表の先読みに失敗:", e);
             }
-          }, 100);
+            setSelectedStopId(firstStopId);
+            setSelectedTrip(null);
+          }
         }
       } catch (e) {
         console.error("検索からバス停を選択する際のエラー:", e);
@@ -321,6 +339,7 @@ function App() {
         tripDetail={tripDetail}
         stopDelays={stopDelays}
         zoom={zoom}
+        timetableReadyForStop={timetableReadyForStop}
         onClose={handleClosePanel}
         onSelectBus={handleBusClick}
         onFlyToStop={handleFlyToStop}
