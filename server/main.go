@@ -53,6 +53,7 @@ type TripInfo struct {
 type TripRealtimeUpdate struct {
 	TripID     string           `json:"trip_id"`
 	RouteID    string           `json:"route_id"`
+	Headsign   string           `json:"headsign,omitempty"`
 	VehicleID  string           `json:"vehicle_id,omitempty"`
 	TripDelay  int64            `json:"trip_delay,omitempty"`  // 全体の遅延秒数
 	StopDelays map[string]int64 `json:"stop_delays,omitempty"` // stop_id -> delay_seconds のマップ
@@ -662,7 +663,16 @@ func fetchTripUpdatesFromODPT() (map[string]*TripRealtimeUpdate, error) {
 			continue
 		}
 
+		headsign := ""
+		vehicleID := ""
+		if tu.GetVehicle() != nil {
+			vehicleID = tu.GetVehicle().GetId()
+		}
+
 		delayMap := make(map[string]int64)
+		var lastSeq uint32
+		hasLastSeq := false
+		lastStopID := ""
 
 		// 各バス停ごとの遅延を愚直に保存
 		for _, stu := range tu.GetStopTimeUpdate() {
@@ -670,10 +680,24 @@ func fetchTripUpdatesFromODPT() (map[string]*TripRealtimeUpdate, error) {
 			if stopID == "" {
 				continue
 			}
+
+			seq := stu.GetStopSequence()
+			if !hasLastSeq || seq >= lastSeq {
+				hasLastSeq = true
+				lastSeq = seq
+				lastStopID = stopID
+			}
+
 			if stu.Arrival != nil && stu.Arrival.Delay != nil {
 				delayMap[stopID] = int64(*stu.Arrival.Delay)
 			} else if stu.Departure != nil && stu.Departure.Delay != nil {
 				delayMap[stopID] = int64(*stu.Departure.Delay)
+			}
+		}
+
+		if lastStopID != "" {
+			if stop, ok := stopsCache[lastStopID]; ok {
+				headsign = strings.TrimSpace(stop.Name)
 			}
 		}
 
@@ -685,6 +709,8 @@ func fetchTripUpdatesFromODPT() (map[string]*TripRealtimeUpdate, error) {
 		updates[tripID] = &TripRealtimeUpdate{
 			TripID:     tripID,
 			RouteID:    tu.GetTrip().GetRouteId(),
+			Headsign:   headsign,
+			VehicleID:  vehicleID,
 			TripDelay:  tripDelay,
 			StopDelays: delayMap,
 		}
@@ -784,6 +810,56 @@ func main() {
 		if err != nil {
 			realtimeErrStr = err.Error()
 			buses = calculateAllBusPositions()
+		}
+
+		// timetables に存在しない ADDED 便などで headsign が空になる場合、
+		// TripUpdate 側の trip_headsign を優先して補完する。
+		if tripUpdates, updateErr := getRealtimeTripUpdates(); updateErr == nil {
+			updateByVehicle := make(map[string]*TripRealtimeUpdate)
+			routeHeadsignSet := make(map[string]map[string]struct{})
+			for _, u := range tripUpdates {
+				if u != nil && u.VehicleID != "" {
+					updateByVehicle[u.VehicleID] = u
+				}
+				if u != nil && u.RouteID != "" && u.Headsign != "" {
+					if routeHeadsignSet[u.RouteID] == nil {
+						routeHeadsignSet[u.RouteID] = make(map[string]struct{})
+					}
+					routeHeadsignSet[u.RouteID][u.Headsign] = struct{}{}
+				}
+			}
+
+			routeUniqueHeadsign := make(map[string]string)
+			for rid, hsSet := range routeHeadsignSet {
+				if len(hsSet) != 1 {
+					continue
+				}
+				for hs := range hsSet {
+					routeUniqueHeadsign[rid] = hs
+				}
+			}
+
+			for i := range buses {
+				if buses[i].Headsign != "" {
+					continue
+				}
+
+				if u, ok := tripUpdates[buses[i].TripID]; ok && u != nil && u.Headsign != "" {
+					buses[i].Headsign = u.Headsign
+					continue
+				}
+
+				if buses[i].VehicleID != "" {
+					if u, ok := updateByVehicle[buses[i].VehicleID]; ok && u != nil && u.Headsign != "" {
+						buses[i].Headsign = u.Headsign
+						continue
+					}
+				}
+
+				if hs, ok := routeUniqueHeadsign[buses[i].RouteID]; ok && hs != "" {
+					buses[i].Headsign = hs
+				}
+			}
 		}
 
 		if minLatStr != "" && maxLatStr != "" {

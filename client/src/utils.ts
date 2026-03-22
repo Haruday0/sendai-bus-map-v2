@@ -24,6 +24,7 @@ export function addDelayToTime(time: string, delaySeconds: number): string {
 
 /** 行先表示のフォーマット */
 export function formatHeadsign(headsign: string): string {
+  if (!headsign || headsign.trim().length === 0) return "";
   if (headsign.includes("循環")) return headsign;
   return headsign + "行";
 }

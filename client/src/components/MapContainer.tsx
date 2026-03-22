@@ -43,7 +43,10 @@ function createBusMarkerElement(
 
   const label = document.createElement("div");
   label.className = "bus-label";
-  label.textContent = `[${routeName}] ${formatHeadsign(headsign)}`;
+  const formattedHeadsign = formatHeadsign(headsign);
+  label.textContent = formattedHeadsign
+    ? `[${routeName}] ${formattedHeadsign}`
+    : `[${routeName}]`;
   container.appendChild(label);
 
   const iconWrapper = document.createElement("div");
