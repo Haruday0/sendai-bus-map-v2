@@ -819,11 +819,6 @@
   height: 14px;
 }
 
-/* バスパネル表示中はリンクを少し上へ逃がして重なりを避ける */
-#github-footer-link.panel-open {
-  bottom: calc(60% + 24px);
-}
-
 @media (max-width: 767px) {
   #github-footer-link {
     left: 6px;
@@ -836,9 +831,5 @@
   #github-footer-link .github-mark {
     width: 13px;
     height: 13px;
-  }
-
-  #github-footer-link.panel-open {
-    bottom: calc(60% + 16px);
   }
 }

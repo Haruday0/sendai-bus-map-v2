@@ -347,7 +347,6 @@ function App() {
 
       <a
         id="github-footer-link"
-        className={selectedStopId || selectedTrip ? "panel-open" : ""}
         href="https://github.com/Haruday0/sendai-bus-map-v2"
         target="_blank"
         rel="noopener noreferrer"
