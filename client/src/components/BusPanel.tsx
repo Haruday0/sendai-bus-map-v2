@@ -426,7 +426,10 @@ const BusPanel: React.FC<BusPanelProps> = ({
         const relativeTop = parent.scrollTop + (rowRect.top - parentRect.top);
 
         const nextScrollTop = relativeTop - desiredTop;
-        const maxScrollTop = Math.max(0, parent.scrollHeight - parent.clientHeight);
+        const maxScrollTop = Math.max(
+          0,
+          parent.scrollHeight - parent.clientHeight,
+        );
         const clamped = Math.max(0, Math.min(nextScrollTop, maxScrollTop));
 
         // Instagram内ブラウザ等で開閉直後に高さが不安定な場合があるため、
