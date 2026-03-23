@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://busmap.haruday0.live/sitemap.xml
