@@ -408,10 +408,33 @@ const BusPanel: React.FC<BusPanelProps> = ({
       const el = document.getElementById(panelData.initialTargetId);
       if (el) {
         const parent = contentRef.current;
-        const offset = selectedTrip ? 40 : 0;
-        const denom = 3.5;
-        parent.scrollTop = el.offsetTop - parent.clientHeight / denom + offset;
-        lastSelectedKeyRef.current = currentSelectionKey;
+        const currentRowHeight = el.getBoundingClientRect().height || 44;
+        const prev = el.previousElementSibling as HTMLElement | null;
+        const prevRowHeight = prev?.classList.contains("item-row")
+          ? prev.getBoundingClientRect().height
+          : currentRowHeight;
+
+        // ヘッダー直下で「1つ前の行」が見える位置に固定する。
+        // 比率ではなく行高ベースにすることで、端末差によるズレを抑える。
+        const topMargin = 10;
+        const desiredTop = prevRowHeight + topMargin;
+
+        // offsetTop は環境によって基準親がずれて計算誤差が出ることがあるため、
+        // panel-content の見えている領域基準で相対位置を算出する。
+        const parentRect = parent.getBoundingClientRect();
+        const rowRect = el.getBoundingClientRect();
+        const relativeTop = parent.scrollTop + (rowRect.top - parentRect.top);
+
+        const nextScrollTop = relativeTop - desiredTop;
+        const maxScrollTop = Math.max(0, parent.scrollHeight - parent.clientHeight);
+        const clamped = Math.max(0, Math.min(nextScrollTop, maxScrollTop));
+
+        // Instagram内ブラウザ等で開閉直後に高さが不安定な場合があるため、
+        // 1フレーム遅らせて最終レイアウト後にスクロールする。
+        requestAnimationFrame(() => {
+          parent.scrollTop = clamped;
+          lastSelectedKeyRef.current = currentSelectionKey;
+        });
       }
     }
   }, [
