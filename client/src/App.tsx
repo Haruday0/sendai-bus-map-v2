@@ -15,6 +15,20 @@ import SearchBox from "./components/SearchBox";
 import BusPanel from "./components/BusPanel";
 import LayerControl from "./components/LayerControl";
 
+const isDebugEnabledFromSearch = (search: string): boolean => {
+  const params = new URLSearchParams(search);
+  if (!params.has("debug")) return false;
+  const raw = (params.get("debug") || "").trim().toLowerCase();
+  if (raw === "" || raw === "1" || raw === "true" || raw === "on") return true;
+  return false;
+};
+
+const buildDebugModeUrl = (): string => {
+  const url = new URL(window.location.href);
+  url.searchParams.set("debug", "1");
+  return url.toString();
+};
+
 function App() {
   // --- データ ---
   const [data, setData] = useState<AppData>({
@@ -39,11 +53,17 @@ function App() {
   const mapRef = useRef<maplibregl.Map | null>(null);
 
   // --- 状態管理 ---
-  const [activeLayer, setActiveLayer] = useState<"pale" | "ortho">("pale");
+  const [activeLayer, setActiveLayer] = useState<"pale" | "ortho" | "osm">(
+    "osm",
+  );
   const [selectedStopId, setSelectedStopId] = useState<string | null>(null);
   const [selectedTrip, setSelectedTrip] = useState<PanelTrip | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [zoom, setZoom] = useState(15);
+  const [isDebugMode, setIsDebugMode] = useState(() =>
+    isDebugEnabledFromSearch(window.location.search),
+  );
+  const [debugModeUrl, setDebugModeUrl] = useState(() => buildDebugModeUrl());
   // このバス停IDの時刻表が1回目のフェッチ完了済か管理する
   // （キャッシュされた旧データで誤スクロールしないため）
   const [timetableReadyForStop, setTimetableReadyForStop] = useState<
@@ -313,6 +333,20 @@ function App() {
     }
   }, [isSearching]);
 
+  useEffect(() => {
+    const syncDebugState = () => {
+      setIsDebugMode(isDebugEnabledFromSearch(window.location.search));
+      setDebugModeUrl(buildDebugModeUrl());
+    };
+
+    window.addEventListener("popstate", syncDebugState);
+    window.addEventListener("hashchange", syncDebugState);
+    return () => {
+      window.removeEventListener("popstate", syncDebugState);
+      window.removeEventListener("hashchange", syncDebugState);
+    };
+  }, []);
+
   // ==================== ローディング ====================
 
   if (!data) {
@@ -331,6 +365,19 @@ function App() {
       />
 
       <LayerControl activeLayer={activeLayer} onLayerChange={setActiveLayer} />
+
+      {isDebugMode && (
+        <div id="debug-info-panel" role="status" aria-live="polite">
+          <div className="debug-row">
+            <span className="debug-label">Debug URL</span>
+            <span className="debug-value">{debugModeUrl}</span>
+          </div>
+          <div className="debug-row">
+            <span className="debug-label">Zoom</span>
+            <span className="debug-value">{zoom.toFixed(2)}</span>
+          </div>
+        </div>
+      )}
 
       <BusPanel
         data={data}

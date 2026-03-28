@@ -2,8 +2,8 @@ import React, { useState, useEffect } from "react";
 // use Material Icons font for UI icons
 
 interface LayerControlProps {
-  activeLayer: "pale" | "ortho";
-  onLayerChange: (type: "pale" | "ortho") => void;
+  activeLayer: "pale" | "ortho" | "osm";
+  onLayerChange: (type: "pale" | "ortho" | "osm") => void;
 }
 
 const LayerControl: React.FC<LayerControlProps> = ({
@@ -39,6 +39,23 @@ const LayerControl: React.FC<LayerControlProps> = ({
         </span>
       </div>
       <div id="layer-menu" className={layerMenuOpen ? "show" : ""}>
+        <div className="layer-group-title">OpenStreetMap</div>
+        <div
+          className={`layer-item ${activeLayer === "osm" ? "active" : ""}`}
+          onClick={() => onLayerChange("osm")}
+        >
+          <img
+            className="layer-item-icon"
+            src="/osm_logo.svg"
+            alt=""
+            aria-hidden
+            loading="lazy"
+            decoding="async"
+          />
+          OpenStreetMap
+        </div>
+
+        <div className="layer-group-title">地理院タイル</div>
         <div
           className={`layer-item ${activeLayer === "pale" ? "active" : ""}`}
           onClick={() => onLayerChange("pale")}

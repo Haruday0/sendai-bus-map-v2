@@ -145,6 +145,14 @@
   color: #5e5e5e;
 }
 
+.layer-item-icon {
+  width: 20px;
+  height: 20px;
+  margin-right: 8px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
 .bus-label {
   position: absolute;
   bottom: 42px;
@@ -520,6 +528,41 @@
   z-index: 9000;
 }
 
+#debug-info-panel {
+  position: absolute;
+  top: 20px;
+  right: 72px;
+  z-index: 9050;
+  max-width: min(560px, calc(100vw - 100px));
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #e6e6e6;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+  font-size: 11px;
+  color: #444;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.debug-row {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 8px;
+  align-items: start;
+}
+
+.debug-label {
+  font-weight: 700;
+  color: #666;
+}
+
+.debug-value {
+  word-break: break-all;
+  color: #333;
+}
+
 @media (max-width: 767px) {
   #layer-control-container {
     top: 65px;
@@ -533,6 +576,18 @@
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
+  }
+
+  #debug-info-panel {
+    top: 65px;
+    right: 56px;
+    max-width: calc(100vw - 72px);
+    font-size: 10px;
+  }
+
+  .debug-row {
+    grid-template-columns: 56px 1fr;
+    gap: 6px;
   }
 }
 
@@ -582,6 +637,15 @@
   transition: 0.2s;
   color: #444;
 }
+
+.layer-group-title {
+  padding: 6px 12px 4px;
+  font-size: 12px;
+  font-weight: 400;
+  color: #444;
+  line-height: 1;
+}
+
 .layer-item:hover {
   background: #f5f5f5;
 }
@@ -589,6 +653,56 @@
   background: #e8f5e9;
   color: #00703c;
   font-weight: bold;
+}
+
+.map-attribution {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 6500;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #e6e6e6;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+  color: #5e5e5e;
+  text-decoration: none;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  transition:
+    transform 0.2s,
+    box-shadow 0.2s,
+    background 0.2s;
+}
+
+.map-attribution a,
+.map-attribution a:visited,
+.map-attribution a:hover,
+.map-attribution a:active {
+  color: #5e5e5e;
+  text-decoration: none;
+}
+
+.map-attribution:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.2);
+  background: #fff;
+}
+
+@media (max-width: 767px) {
+  .map-attribution {
+    right: 6px;
+    bottom: 6px;
+    min-height: 24px;
+    padding: 0 6px;
+    font-size: 10px;
+  }
 }
 
 /* --- 検索コンテナ --- */

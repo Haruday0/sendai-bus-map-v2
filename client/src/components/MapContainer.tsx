@@ -9,7 +9,7 @@ import { formatHeadsign } from "../utils";
 
 interface MapContainerProps {
   data: AppData;
-  activeLayer: "pale" | "ortho";
+  activeLayer: "pale" | "ortho" | "osm";
   selectedTrip: PanelTrip | null;
   onStopClick: (id: string, zoom?: number) => void;
   onBusClick: (
@@ -92,6 +92,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   const [isUpdatesPaused, setIsUpdatesPaused] = useState(false);
   const lastActivityTimeRef = useRef<number>(0);
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initialLayerRef = useRef<"pale" | "ortho" | "osm">(activeLayer);
 
   // 外部参照用の ref 同期
   useEffect(() => {
@@ -318,6 +319,27 @@ const MapContainer: React.FC<MapContainerProps> = ({
   const onMoveStartRef = useRef(onMoveStart);
   const onZoomChangeRef = useRef(onZoomChange);
 
+  const applyLayerVisibility = useCallback(
+    (map: maplibregl.Map, layer: "pale" | "ortho" | "osm") => {
+      map.setLayoutProperty(
+        "gsi-layer",
+        "visibility",
+        layer === "pale" ? "visible" : "none",
+      );
+      map.setLayoutProperty(
+        "gsi-ortho-layer",
+        "visibility",
+        layer === "ortho" ? "visible" : "none",
+      );
+      map.setLayoutProperty(
+        "osm-layer",
+        "visibility",
+        layer === "osm" ? "visible" : "none",
+      );
+    },
+    [],
+  );
+
   // ハンドラ refs を常に最新に
   useEffect(() => {
     updateStopMarkersRef.current = updateStopMarkers;
@@ -359,6 +381,10 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
     const movestartHandler = () => onMoveStart();
 
+    const zoomHandler = () => {
+      onZoomChange(map.getZoom());
+    };
+
     const clickHandler = (e: maplibregl.MapMouseEvent) => {
       const el = (e.originalEvent.target as HTMLElement) || null;
       if (el && el.className && el.className.includes("maplibregl-canvas")) {
@@ -368,11 +394,13 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
     map.on("moveend", moveendHandler);
     map.on("movestart", movestartHandler);
+    map.on("zoom", zoomHandler);
     map.on("click", clickHandler);
 
     return () => {
       map.off("moveend", moveendHandler);
       map.off("movestart", movestartHandler);
+      map.off("zoom", zoomHandler);
       map.off("click", clickHandler);
     };
   }, [
@@ -388,6 +416,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   useEffect(() => {
     const map = new maplibregl.Map({
       container: mapContainerRef.current!,
+      attributionControl: false,
       style: {
         version: 8,
         glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
@@ -410,14 +439,42 @@ const MapContainer: React.FC<MapContainerProps> = ({
               '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener noreferrer">地理院タイル</a>',
             maxzoom: 18,
           },
+          osm: {
+            type: "raster",
+            tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+            tileSize: 256,
+            attribution:
+              '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>',
+            maxzoom: 19,
+          },
         },
         layers: [
-          { id: "gsi-layer", type: "raster", source: "gsi" },
+          {
+            id: "gsi-layer",
+            type: "raster",
+            source: "gsi",
+            layout: {
+              visibility:
+                initialLayerRef.current === "pale" ? "visible" : "none",
+            },
+          },
           {
             id: "gsi-ortho-layer",
             type: "raster",
             source: "gsi-ortho",
-            layout: { visibility: "none" },
+            layout: {
+              visibility:
+                initialLayerRef.current === "ortho" ? "visible" : "none",
+            },
+          },
+          {
+            id: "osm-layer",
+            type: "raster",
+            source: "osm",
+            layout: {
+              visibility:
+                initialLayerRef.current === "osm" ? "visible" : "none",
+            },
           },
         ],
       },
@@ -527,14 +584,8 @@ const MapContainer: React.FC<MapContainerProps> = ({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !isStyleLoadedRef.current) return;
-    if (activeLayer === "pale") {
-      map.setLayoutProperty("gsi-layer", "visibility", "visible");
-      map.setLayoutProperty("gsi-ortho-layer", "visibility", "none");
-    } else {
-      map.setLayoutProperty("gsi-layer", "visibility", "none");
-      map.setLayoutProperty("gsi-ortho-layer", "visibility", "visible");
-    }
-  }, [activeLayer]);
+    applyLayerVisibility(map, activeLayer);
+  }, [activeLayer, applyLayerVisibility]);
 
   // 便選択時の描画・マーカー更新同期
   useEffect(() => {
@@ -547,6 +598,28 @@ const MapContainer: React.FC<MapContainerProps> = ({
   return (
     <div className="map-container-wrapper">
       <div id="map" ref={mapContainerRef}></div>
+      <div className="map-attribution" role="note" aria-live="polite">
+        {activeLayer === "osm" ? (
+          <>
+            &copy;{" "}
+            <a
+              href="https://www.openstreetmap.org/copyright"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              OpenStreetMap contributors
+            </a>
+          </>
+        ) : (
+          <a
+            href="https://maps.gsi.go.jp/development/ichiran.html"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            地理院タイル
+          </a>
+        )}
+      </div>
       {isUpdatesPaused && (
         <div className="updates-paused-overlay">
           <button
