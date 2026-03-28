@@ -676,6 +676,8 @@
   letter-spacing: 0.01em;
   line-height: 1;
   transition:
+    opacity 0.2s,
+    visibility 0.2s,
     transform 0.2s,
     box-shadow 0.2s,
     background 0.2s;
@@ -952,6 +954,14 @@
 
   /* スマホではバスパネル表示中にGitHubボタンを非表示にする */
   #bottom-panel.open ~ #github-footer-link {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(4px);
+  }
+
+  /* スマホではバスパネル表示中に出典バッジも非表示にする */
+  #bottom-panel.open ~ .map-container-wrapper .map-attribution {
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
