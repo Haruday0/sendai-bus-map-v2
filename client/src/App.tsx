@@ -69,6 +69,7 @@ function App() {
   const [timetableReadyForStop, setTimetableReadyForStop] = useState<
     string | null
   >(null);
+  const isPanelOpen = !!selectedStopId || !!selectedTrip;
 
   // ==================== データ読み込み ====================
   // 初期化時に必須データ（calendar, routes, extra）のみを取得
@@ -418,6 +419,7 @@ function App() {
       <MapContainer
         data={data}
         activeLayer={activeLayer}
+        isPanelOpen={isPanelOpen}
         selectedTrip={selectedTrip}
         onStopClick={handleStopClick}
         onBusClick={handleBusClick}

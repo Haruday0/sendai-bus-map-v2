@@ -961,7 +961,7 @@
   }
 
   /* スマホではバスパネル表示中に出典バッジも非表示にする */
-  #bottom-panel.open ~ .map-container-wrapper .map-attribution {
+  .map-attribution.panel-open {
     opacity: 0;
     visibility: hidden;
     pointer-events: none;

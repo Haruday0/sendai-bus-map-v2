@@ -10,6 +10,7 @@ import { formatHeadsign } from "../utils";
 interface MapContainerProps {
   data: AppData;
   activeLayer: "pale" | "ortho" | "osm";
+  isPanelOpen?: boolean;
   selectedTrip: PanelTrip | null;
   onStopClick: (id: string, zoom?: number) => void;
   onBusClick: (
@@ -70,6 +71,7 @@ function createBusMarkerElement(
 const MapContainer: React.FC<MapContainerProps> = ({
   data,
   activeLayer,
+  isPanelOpen = false,
   selectedTrip,
   onStopClick,
   onBusClick,
@@ -598,7 +600,11 @@ const MapContainer: React.FC<MapContainerProps> = ({
   return (
     <div className="map-container-wrapper">
       <div id="map" ref={mapContainerRef}></div>
-      <div className="map-attribution" role="note" aria-live="polite">
+      <div
+        className={`map-attribution ${isPanelOpen ? "panel-open" : ""}`}
+        role="note"
+        aria-live="polite"
+      >
         {activeLayer === "osm" ? (
           <>
             &copy;{" "}
