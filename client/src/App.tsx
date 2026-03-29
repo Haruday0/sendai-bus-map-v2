@@ -385,6 +385,7 @@ function App() {
         selectedStopId={selectedStopId}
         selectedTrip={selectedTrip}
         tripDetail={tripDetail}
+        isDebugMode={isDebugMode}
         stopDelays={stopDelays}
         zoom={zoom}
         timetableReadyForStop={timetableReadyForStop}

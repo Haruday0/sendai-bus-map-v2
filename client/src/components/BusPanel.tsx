@@ -20,6 +20,7 @@ interface BusPanelProps {
   selectedStopId: string | null;
   selectedTrip: PanelTrip | null;
   tripDetail: TripDetailResponse | null;
+  isDebugMode: boolean;
   stopDelays: Record<string, Record<string, number>>;
   zoom: number;
   timetableReadyForStop?: string | null;
@@ -70,11 +71,37 @@ function getOccupancyDisplay(status?: string): {
   }
 }
 
+const formatDebugValue = (value: unknown): string => {
+  if (value === undefined) return "undefined";
+  if (value === null) return "null";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+};
+
+const DebugMeta: React.FC<{ label: string; value: unknown }> = ({
+  label,
+  value,
+}) => (
+  <div className="debug-meta-line">
+    <span className="debug-meta-label">{label}</span>
+    <span className="debug-meta-value">{formatDebugValue(value)}</span>
+  </div>
+);
+
+const formatTodayYmd = (): string => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}${m}${d}`;
+};
+
 const BusPanel: React.FC<BusPanelProps> = ({
   data,
   selectedStopId,
   selectedTrip,
   tripDetail,
+  isDebugMode,
   stopDelays,
   zoom,
   timetableReadyForStop,
@@ -136,6 +163,203 @@ const BusPanel: React.FC<BusPanelProps> = ({
   const currentSelectionKey = selectedTrip
     ? `trip-${selectedTrip.tripId}`
     : `stop-${selectedStopId}`;
+
+  const debugTripJson = useMemo(() => {
+    if (!isDebugMode || !selectedTrip) return "";
+    return JSON.stringify(
+      {
+        selectedTrip,
+        tripDetail,
+      },
+      null,
+      2,
+    );
+  }, [isDebugMode, selectedTrip, tripDetail]);
+
+  const debugSelectedTripJson = useMemo(() => {
+    if (!isDebugMode || !selectedTrip) return "";
+    return JSON.stringify(selectedTrip, null, 2);
+  }, [isDebugMode, selectedTrip]);
+
+  const debugTripDetailJson = useMemo(() => {
+    if (!isDebugMode || !selectedTrip || !tripDetail) return "";
+    return JSON.stringify(tripDetail, null, 2);
+  }, [isDebugMode, selectedTrip, tripDetail]);
+
+  const debugStopJson = useMemo(() => {
+    if (!isDebugMode || !selectedStopId) return "";
+
+    const relatedDelayByRoute: Record<string, Record<string, number>> = {};
+    Object.keys(data.timetables).forEach((routeId) => {
+      Object.keys(data.timetables[routeId]).forEach((tripId) => {
+        const trip = data.timetables[routeId][tripId];
+        const includesStop = trip.stops.some(
+          (s) => s.stop_id === selectedStopId,
+        );
+        if (!includesStop) return;
+        const delay =
+          data.delays?.[routeId]?.[tripId] ??
+          stopDelays?.[routeId]?.[tripId] ??
+          0;
+        if (delay === 0) return;
+        if (!relatedDelayByRoute[routeId]) {
+          relatedDelayByRoute[routeId] = {};
+        }
+        relatedDelayByRoute[routeId][tripId] = delay;
+      });
+    });
+
+    return JSON.stringify(
+      {
+        selectedStopId,
+        stop: data.stops[selectedStopId] || null,
+        timetableReadyForStop,
+        relatedDelays: relatedDelayByRoute,
+      },
+      null,
+      2,
+    );
+  }, [
+    isDebugMode,
+    selectedStopId,
+    data.timetables,
+    data.delays,
+    data.stops,
+    stopDelays,
+    timetableReadyForStop,
+  ]);
+
+  const debugStopSelectionJson = useMemo(() => {
+    if (!isDebugMode || !selectedStopId) return "";
+    return JSON.stringify(
+      {
+        selectedStopId,
+        stop: data.stops[selectedStopId] || null,
+        timetableReadyForStop,
+      },
+      null,
+      2,
+    );
+  }, [isDebugMode, selectedStopId, data.stops, timetableReadyForStop]);
+
+  const debugStopRelatedDelaysJson = useMemo(() => {
+    if (!isDebugMode || !selectedStopId) return "";
+
+    const relatedDelayByRoute: Record<string, Record<string, number>> = {};
+    Object.keys(data.timetables).forEach((routeId) => {
+      Object.keys(data.timetables[routeId]).forEach((tripId) => {
+        const trip = data.timetables[routeId][tripId];
+        const includesStop = trip.stops.some(
+          (s) => s.stop_id === selectedStopId,
+        );
+        if (!includesStop) return;
+        const delay =
+          data.delays?.[routeId]?.[tripId] ??
+          stopDelays?.[routeId]?.[tripId] ??
+          0;
+        if (delay === 0) return;
+        if (!relatedDelayByRoute[routeId]) {
+          relatedDelayByRoute[routeId] = {};
+        }
+        relatedDelayByRoute[routeId][tripId] = delay;
+      });
+    });
+
+    return JSON.stringify(relatedDelayByRoute, null, 2);
+  }, [isDebugMode, selectedStopId, data.timetables, data.delays, stopDelays]);
+
+  const dataStaticDebug = useMemo(() => {
+    const todayYmd = formatTodayYmd();
+
+    if (selectedTrip && tripDetail) {
+      const serviceId = tripDetail.trip.service_id;
+      const officeId = tripDetail.trip.office_id;
+      const routeMeta = data.routes[tripDetail.route_id] || null;
+      const calendar = data.calendar[serviceId] || null;
+      const calendarException =
+        data.extra.calendar_dates.find(
+          (d) => d.service_id === serviceId && d.date === todayYmd,
+        ) || null;
+
+      return {
+        mode: "trip",
+        today_ymd: todayYmd,
+        route_from_data: routeMeta,
+        service_id: serviceId,
+        calendar_from_data: calendar,
+        calendar_exception_today: calendarException,
+        office_id: officeId,
+        office_name_from_data: data.extra.offices[officeId] || null,
+      };
+    }
+
+    if (selectedStopId) {
+      const stop = data.stops[selectedStopId] || null;
+      const groupedStopIds = stop
+        ? Object.keys(data.stops).filter(
+            (id) => data.stops[id].name === stop.name,
+          )
+        : [];
+
+      return {
+        mode: "stop",
+        today_ymd: todayYmd,
+        stop_from_data: stop,
+        grouped_stop_ids_same_name: groupedStopIds,
+      };
+    }
+
+    return null;
+  }, [selectedTrip, tripDetail, selectedStopId, data]);
+
+  const mappingTripJson = useMemo(() => {
+    if (!isDebugMode || !selectedTrip || dataStaticDebug?.mode !== "trip") {
+      return "";
+    }
+    return JSON.stringify(
+      {
+        route_id: selectedTrip.routeId,
+        trip_id: selectedTrip.tripId,
+        highlight_id: selectedTrip.highlightId,
+        speed_kmh: selectedTrip.speedKmh,
+        occupancy_status: selectedTrip.occupancyStatus,
+        trip_delay: tripDetail?.trip_delay ?? 0,
+        stops_count: tripDetail?.trip?.stops?.length ?? 0,
+        service_id_from_data: dataStaticDebug.service_id,
+        calendar_from_data: dataStaticDebug.calendar_from_data,
+        calendar_exception_today: dataStaticDebug.calendar_exception_today,
+        office_name_from_data: dataStaticDebug.office_name_from_data,
+        route_from_data: dataStaticDebug.route_from_data,
+      },
+      null,
+      2,
+    );
+  }, [isDebugMode, selectedTrip, tripDetail, dataStaticDebug]);
+
+  const mappingStopJson = useMemo(() => {
+    if (!isDebugMode || !selectedStopId || dataStaticDebug?.mode !== "stop") {
+      return "";
+    }
+    return JSON.stringify(
+      {
+        selected_stop_id: selectedStopId,
+        zoom: zoom.toFixed(2),
+        timetable_ready_for_stop: timetableReadyForStop,
+        routes_loaded: Object.keys(data.timetables).length,
+        stop_from_data: dataStaticDebug.stop_from_data,
+        same_name_stop_ids: dataStaticDebug.grouped_stop_ids_same_name,
+      },
+      null,
+      2,
+    );
+  }, [
+    isDebugMode,
+    selectedStopId,
+    dataStaticDebug,
+    zoom,
+    timetableReadyForStop,
+    data.timetables,
+  ]);
 
   const panelData = useMemo(() => {
     let title = "";
@@ -216,6 +440,31 @@ const BusPanel: React.FC<BusPanelProps> = ({
               {s ? s.name : "..."}
               {s?.platform && (
                 <div className="item-platform">{s.platform}番のりば</div>
+              )}
+              {isDebugMode && (
+                <div className="debug-inline-box">
+                  <DebugMeta label="stop_id" value={st.stop_id} />
+                  <DebugMeta
+                    label="stop_name_from_data"
+                    value={s?.name ?? null}
+                  />
+                  <DebugMeta
+                    label="stop_yomi_from_data"
+                    value={s?.yomi ?? null}
+                  />
+                  <DebugMeta
+                    label="platform_from_data"
+                    value={s?.platform ?? null}
+                  />
+                  <DebugMeta
+                    label="lat_lng_from_data"
+                    value={s ? [s.lat, s.lng] : null}
+                  />
+                  <DebugMeta label="scheduled" value={st.time} />
+                  <DebugMeta label="delay_seconds" value={delay} />
+                  <DebugMeta label="estimated_sec" value={estimatedSec} />
+                  <DebugMeta label="is_past" value={isPast} />
+                </div>
               )}
             </div>
           </div>
@@ -298,6 +547,9 @@ const BusPanel: React.FC<BusPanelProps> = ({
               ? addDelayToTime(bus.time, delay)
               : null;
             const occupancy = getOccupancyDisplay(bus.occupancy_status);
+            const tripMeta =
+              data.timetables[bus.route_id]?.[bus.trip_id] || null;
+            const routeMeta = data.routes[bus.route_id] || null;
 
             let isNext = false;
             if (!bus.is_past && !firstFutureFound) {
@@ -347,6 +599,66 @@ const BusPanel: React.FC<BusPanelProps> = ({
                         {bus.platform}番のりば
                       </div>
                     )}
+                    {isDebugMode && (
+                      <div className="debug-inline-box">
+                        <DebugMeta label="route_id" value={bus.route_id} />
+                        <DebugMeta label="trip_id" value={bus.trip_id} />
+                        <DebugMeta
+                          label="actual_stop_id"
+                          value={bus.actual_stop_id}
+                        />
+                        <DebugMeta label="scheduled" value={bus.time} />
+                        <DebugMeta
+                          label="delay_seconds"
+                          value={bus.delay_seconds ?? 0}
+                        />
+                        <DebugMeta
+                          label="occupancy_status"
+                          value={bus.occupancy_status ?? "NO_DATA_AVAILABLE"}
+                        />
+                        <DebugMeta
+                          label="service_id_from_data"
+                          value={tripMeta?.service_id ?? null}
+                        />
+                        <DebugMeta
+                          label="office_id_from_data"
+                          value={tripMeta?.office_id ?? null}
+                        />
+                        <DebugMeta
+                          label="office_name_from_data"
+                          value={
+                            tripMeta
+                              ? data.extra.offices[tripMeta.office_id]
+                              : null
+                          }
+                        />
+                        <DebugMeta
+                          label="via_from_data"
+                          value={tripMeta?.via ?? null}
+                        />
+                        <DebugMeta
+                          label="route_short_name_from_data"
+                          value={routeMeta?.short_name ?? null}
+                        />
+                        <DebugMeta
+                          label="route_color_from_data"
+                          value={routeMeta?.color ?? null}
+                        />
+                        <DebugMeta
+                          label="service_running_today"
+                          value={
+                            tripMeta
+                              ? isServiceRunningToday(
+                                  tripMeta.service_id,
+                                  data.calendar,
+                                  data.extra,
+                                )
+                              : null
+                          }
+                        />
+                        <DebugMeta label="is_past" value={bus.is_past} />
+                      </div>
+                    )}
                   </div>
                   <span
                     className={`material-icons-outlined item-occupancy-mini ${occupancy.toneClass}`}
@@ -377,6 +689,7 @@ const BusPanel: React.FC<BusPanelProps> = ({
     selectedStopId,
     selectedTrip,
     tripDetail,
+    isDebugMode,
     stopDelays,
     tripOccupancyMap,
     currentTime,
@@ -499,6 +812,90 @@ const BusPanel: React.FC<BusPanelProps> = ({
               </div>
             )}
           </div>
+        )}
+        {isDebugMode && selectedTrip && (
+          <details className="debug-details debug-mapping-details">
+            <summary>data + realtime mapping</summary>
+            <pre className="debug-json-block">
+              {mappingTripJson || "(no data)"}
+            </pre>
+          </details>
+        )}
+        {isDebugMode && selectedStopId && (
+          <details className="debug-details debug-mapping-details">
+            <summary>data-folder context</summary>
+            <pre className="debug-json-block">
+              {mappingStopJson || "(no data)"}
+            </pre>
+          </details>
+        )}
+        {isDebugMode && (selectedTrip || selectedStopId) && (
+          <details
+            className="debug-details debug-mapping-details"
+            aria-label="debug-information"
+          >
+            <summary>Debug Data (Client Side)</summary>
+            {selectedTrip && (
+              <details className="debug-sub-details">
+                <summary>Trip Group</summary>
+                <details className="debug-sub-details">
+                  <summary>Source: selectedTrip (marker click payload)</summary>
+                  <pre className="debug-json-block">
+                    {debugSelectedTripJson || "(no data)"}
+                  </pre>
+                </details>
+                <details className="debug-sub-details">
+                  <summary>Source: tripDetail (/api/trips)</summary>
+                  <pre className="debug-json-block">
+                    {debugTripDetailJson || "(no data)"}
+                  </pre>
+                </details>
+                <details className="debug-sub-details">
+                  <summary>
+                    Computed: merged (selectedTrip + tripDetail)
+                  </summary>
+                  <pre className="debug-json-block">
+                    {debugTripJson || "(no data)"}
+                  </pre>
+                </details>
+                <details className="debug-sub-details">
+                  <summary>Computed: data + realtime mapping</summary>
+                  <pre className="debug-json-block">
+                    {mappingTripJson || "(no data)"}
+                  </pre>
+                </details>
+              </details>
+            )}
+            {selectedStopId && (
+              <details className="debug-sub-details">
+                <summary>Stop Group</summary>
+                <details className="debug-sub-details">
+                  <summary>Source: selectedStop context</summary>
+                  <pre className="debug-json-block">
+                    {debugStopSelectionJson || "(no data)"}
+                  </pre>
+                </details>
+                <details className="debug-sub-details">
+                  <summary>Source: related delays</summary>
+                  <pre className="debug-json-block">
+                    {debugStopRelatedDelaysJson || "(no data)"}
+                  </pre>
+                </details>
+                <details className="debug-sub-details">
+                  <summary>Computed: merged stop debug</summary>
+                  <pre className="debug-json-block">
+                    {debugStopJson || "(no data)"}
+                  </pre>
+                </details>
+                <details className="debug-sub-details">
+                  <summary>Computed: data-folder context</summary>
+                  <pre className="debug-json-block">
+                    {mappingStopJson || "(no data)"}
+                  </pre>
+                </details>
+              </details>
+            )}
+          </details>
         )}
       </div>
       <div className="panel-content" ref={contentRef}>
