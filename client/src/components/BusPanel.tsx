@@ -412,7 +412,7 @@ const BusPanel: React.FC<BusPanelProps> = ({
         const isHighlight = st.stop_id === selectedTrip.highlightId;
         const isNextStop =
           !selectedTrip.highlightId && st.stop_id === nextStopId;
-        const cls = `item-row ${isPast ? "past" : "future"} ${isHighlight ? "highlight" : ""} ${isNextStop ? "next-stop" : ""}`;
+        const cls = `item-row trip-stop-row ${isPast ? "past" : "future"} ${isHighlight ? "highlight" : ""} ${isNextStop ? "next-stop" : ""}`;
 
         return (
           <div
@@ -557,7 +557,7 @@ const BusPanel: React.FC<BusPanelProps> = ({
               isNext = true;
               initialTargetId = `arrival-${idx}`;
             }
-            const cls = `item-row ${bus.is_past ? "past" : "future"} ${isNext ? "next-stop" : ""}`;
+            const cls = `item-row stop-timetable-row ${bus.is_past ? "past" : "future"} ${isNext ? "next-stop" : ""}`;
 
             return (
               <div

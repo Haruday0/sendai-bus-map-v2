@@ -482,7 +482,7 @@
   border-bottom: 1px solid #f8f8f8;
   display: flex;
   align-items: stretch;
-  gap: 12px;
+  gap: 8px;
   cursor: pointer;
   transition: background 0.2s;
   position: relative;
@@ -548,7 +548,7 @@
   background-color: #e8f5e9;
 }
 .item-time {
-  flex: 0 0 68px;
+  flex: 0 0 60px;
   font-size: 18px;
   letter-spacing: -1px;
   display: flex;
@@ -556,30 +556,34 @@
   justify-content: center;
   align-items: center;
   text-align: center;
-  min-height: 48px;
+  min-height: 50px;
 }
 .delay-time-inline {
+  position: relative;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
   width: 100%;
+  min-height: 50px;
 }
 .delay-time-inline .delay-estimated-time {
   position: static;
   transform: none;
+  white-space: nowrap;
 }
 .delay-time-inline .delay-original-time {
-  position: static;
-  transform: none;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -165%);
+  white-space: nowrap;
 }
 .delay-original-time {
   color: #ccc;
   font-weight: normal;
   text-decoration-thickness: 2px;
-  font-size: 12px;
-  line-height: 1.1;
+  font-size: 18px;
+  line-height: 1;
 }
 .delay-estimated-time {
   color: #00703c;
@@ -591,6 +595,20 @@
   min-width: 0;
   font-size: 16px;
   line-height: 1.4;
+}
+
+.trip-stop-row {
+  align-items: center;
+}
+
+.trip-stop-row .item-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.stop-timetable-row {
+  align-items: stretch;
 }
 
 .item-info-with-icon {
@@ -718,15 +736,6 @@
 
   .debug-subtitle {
     font-size: 10px;
-  }
-
-  .item-row {
-    gap: 8px;
-  }
-
-  .item-time {
-    flex-basis: 60px;
-    min-height: 44px;
   }
 }
 
