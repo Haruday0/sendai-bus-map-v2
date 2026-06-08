@@ -26,3 +26,4 @@ gtfs_raw/
 
 v1-legacy/
 example/
+*.log
