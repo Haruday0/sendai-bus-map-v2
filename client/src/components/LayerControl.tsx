@@ -49,7 +49,7 @@ const LayerControl: React.FC<LayerControlProps> = ({
             src="/osm_logo.svg"
             alt=""
             aria-hidden
-            loading="lazy"
+            loading="eager"
             decoding="async"
           />
           OpenStreetMap
