@@ -42,12 +42,26 @@ function createBusMarkerElement(
   const container = document.createElement("div");
   container.className = "bus-marker-container";
 
+  const formattedHeadsign = formatHeadsign(headsign);
+
+  // ラベル全体のラッパー
   const label = document.createElement("div");
   label.className = "bus-label";
-  const formattedHeadsign = formatHeadsign(headsign);
-  label.textContent = formattedHeadsign
-    ? `[${routeName}] ${formattedHeadsign}`
-    : `[${routeName}]`;
+
+  // 系統番号バッジ
+  const badge = document.createElement("span");
+  badge.className = "bus-label-badge";
+  badge.textContent = routeName;
+  label.appendChild(badge);
+
+  // 行先テキスト（バッジがあるときのみ表示）
+  if (formattedHeadsign) {
+    const dest = document.createElement("span");
+    dest.className = "bus-label-dest";
+    dest.textContent = formattedHeadsign;
+    label.appendChild(dest);
+  }
+
   container.appendChild(label);
 
   const iconWrapper = document.createElement("div");
