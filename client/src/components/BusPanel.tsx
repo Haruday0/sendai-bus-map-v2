@@ -362,7 +362,7 @@ const BusPanel: React.FC<BusPanelProps> = ({
   ]);
 
   const panelData = useMemo(() => {
-    let title = "";
+    let title: React.ReactNode = "";
     let via = "";
     let office = "";
     let speedText = "";
@@ -379,8 +379,24 @@ const BusPanel: React.FC<BusPanelProps> = ({
       // 便詳細表示モード
       const trip = tripDetail.trip;
       const routeName = tripDetail.route_name;
+      const routeObj = data.routes[selectedTrip.routeId];
+      const routeColor = routeObj?.color
+        ? `#${routeObj.color.replace(/^#/, "")}`
+        : "#00703c";
       via = trip.via ? `${trip.via} 経由` : "";
-      title = `[${routeName}] ${formatHeadsign(trip.headsign)}`;
+      title = (
+        <div className="panel-title-content">
+          <span
+            className="route-badge"
+            style={{ backgroundColor: routeColor, color: "#ffffff" }}
+          >
+            {routeName}
+          </span>
+          <span className="destination-name">
+            {formatHeadsign(trip.headsign)}
+          </span>
+        </div>
+      );
       office = tripDetail.office_name || "";
       if (typeof selectedTrip.speedKmh === "number") {
         speedText = `${Math.floor(selectedTrip.speedKmh)} km/h`;
@@ -591,9 +607,29 @@ const BusPanel: React.FC<BusPanelProps> = ({
                 <div className="item-info item-info-with-icon">
                   <div className="item-info-main">
                     {bus.via && <div className="item-via">{bus.via} 経由</div>}
-                    {(data.routes[bus.route_id]?.short_name || bus.route_id) +
-                      "系統 " +
-                      formatHeadsign(bus.headsign)}
+                    <div className="item-destination-row">
+                      {(() => {
+                        const routeObj = data.routes[bus.route_id];
+                        const routeNum = routeObj?.short_name || bus.route_id;
+                        const badgeColor = routeObj?.color
+                          ? `#${routeObj.color.replace(/^#/, "")}`
+                          : "#00703c";
+                        return (
+                          <span
+                            className="route-badge"
+                            style={{
+                              backgroundColor: badgeColor,
+                              color: "#ffffff",
+                            }}
+                          >
+                            {routeNum}
+                          </span>
+                        );
+                      })()}
+                      <span className="destination-name">
+                        {formatHeadsign(bus.headsign)}
+                      </span>
+                    </div>
                     {bus.platform && (
                       <div className="item-platform">
                         {bus.platform}番のりば
@@ -785,21 +821,31 @@ const BusPanel: React.FC<BusPanelProps> = ({
         {panelData.office && (
           <div className="office-info">{panelData.office}</div>
         )}
-        {selectedTrip && panelData.occupancyInfo && (
+        {selectedTrip && (
           <div
-            className={`occupancy-info ${panelData.occupancyInfo.toneClass}`}
+            className="panel-status-badges"
+            style={{
+              display: "flex",
+              gap: "8px",
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
           >
-            <div className="occupancy-left">
-              <span
-                className="material-icons-outlined occupancy-icon"
-                aria-hidden
+            {panelData.occupancyInfo && (
+              <div
+                className={`occupancy-info ${panelData.occupancyInfo.toneClass}`}
               >
-                {panelData.occupancyInfo.icon}
-              </span>
-              <span className="occupancy-text">
-                {panelData.occupancyInfo.label}
-              </span>
-            </div>
+                <span
+                  className="material-icons-outlined occupancy-icon"
+                  aria-hidden
+                >
+                  {panelData.occupancyInfo.icon}
+                </span>
+                <span className="occupancy-text">
+                  {panelData.occupancyInfo.label}
+                </span>
+              </div>
+            )}
             {panelData.speedText && (
               <div className="speed-info">
                 <span

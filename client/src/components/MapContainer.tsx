@@ -152,9 +152,20 @@ const MapContainer: React.FC<MapContainerProps> = ({
         .setLngLat([stop.lng, stop.lat])
         .addTo(map);
 
+      // 💡 修正1: ピンタップ時にスマホ下部55%の余白を入れてパネル被りを防ぐ
       el.addEventListener("click", (e) => {
         e.stopPropagation();
         onStopClick(id, map.getZoom());
+
+        const isMobile = window.innerWidth < 768;
+        map.flyTo({
+          center: [stop.lng, stop.lat],
+          zoom: map.getZoom(),
+          speed: 1.2,
+          padding: isMobile
+            ? { top: 0, bottom: window.innerHeight * 0.55, left: 0, right: 0 }
+            : { top: 0, bottom: 0, left: 400, right: 0 },
+        });
       });
 
       stopMarkersRef.current.push(marker);

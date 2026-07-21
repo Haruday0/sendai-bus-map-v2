@@ -6,7 +6,12 @@ import {
   fetchTripDetails,
   fetchStopTimetable,
 } from "./dataLoader";
-import type { AppData, PanelTrip, TripDetailResponse } from "./types";
+import type {
+  AppData,
+  PanelTrip,
+  TripDetailResponse,
+  TimetablesData,
+} from "./types";
 import "./App.css";
 
 // コンポーネント
@@ -64,8 +69,20 @@ function App() {
     isDebugEnabledFromSearch(window.location.search),
   );
   const [debugModeUrl, setDebugModeUrl] = useState(() => buildDebugModeUrl());
+
+  // 最新の data.stops と zoom を安全に参照するための ref（無限ループ・重さ防止）
+  const dataStopsRef = useRef(data.stops);
+  const zoomRef = useRef(zoom);
+
+  useEffect(() => {
+    dataStopsRef.current = data.stops;
+  }, [data.stops]);
+
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
   // このバス停IDの時刻表が1回目のフェッチ完了済か管理する
-  // （キャッシュされた旧データで誤スクロールしないため）
   const [timetableReadyForStop, setTimetableReadyForStop] = useState<
     string | null
   >(null);
@@ -145,7 +162,8 @@ function App() {
     };
   }, [selectedTrip]);
 
-  // selectedStopId が変更されたら、サーバーからそのバス停の時刻表を取得
+  // 💡 修正4: selectedStopId 変更時、集約表示なら同名バス停（全乗り場）の時刻表を一括取得して深層マージ
+  // 依存配列は [selectedStopId] のみに固定し、連打・重さを完全に防止
   useEffect(() => {
     if (!selectedStopId) return;
 
@@ -154,21 +172,76 @@ function App() {
 
     const loadStopTimetable = async () => {
       try {
-        const timetableData = await fetchStopTimetable(selectedStopId);
+        const currentStops = dataStopsRef.current;
+        const currentStop = currentStops[selectedStopId];
+        const isGrouped = zoomRef.current < 16.5;
+
+        // 集約時は同じ名前の全乗り場IDを取得、それ以外はタップしたIDのみ
+        const targetStopIds =
+          isGrouped && currentStop
+            ? Object.keys(currentStops).filter(
+                (id) => currentStops[id]?.name === currentStop.name,
+              )
+            : [selectedStopId];
+
+        // 各ポールの時刻表を安全に一括取得
+        const timetableResults = await Promise.all(
+          targetStopIds.map((id) => fetchStopTimetable(id).catch(() => null)),
+        );
+
         if (cancelled) return;
-        // 遅延情報を保存
-        setStopDelays(timetableData.delays ?? {});
-        // 取得した時刻表データを data.timetables にマージ
-        setData((prev) => ({
-          ...prev,
-          delays: timetableData.delays ?? {},
-          timetables: {
-            ...prev.timetables,
-            ...timetableData.timetables,
-          },
-        }));
-        // 最初のフェッチ完了時のみスクロール許可フラグを立てる
-        // （10秒ごとの更新では再スクロールしない）
+
+        const mergedDelays: Record<string, Record<string, number>> = {};
+        const mergedTimetables: TimetablesData = {};
+
+        timetableResults.forEach((res) => {
+          if (!res) return;
+
+          if (res.delays) {
+            const delays = res.delays;
+            Object.keys(delays).forEach((rid) => {
+              mergedDelays[rid] = {
+                ...(mergedDelays[rid] || {}),
+                ...delays[rid],
+              };
+            });
+          }
+
+          if (res.timetables) {
+            const timetables = res.timetables;
+            Object.keys(timetables).forEach((rid) => {
+              mergedTimetables[rid] = {
+                ...(mergedTimetables[rid] || {}),
+                ...timetables[rid],
+              };
+            });
+          }
+        });
+
+        setStopDelays((prev) => {
+          const updated = { ...prev };
+          Object.keys(mergedDelays).forEach((rid) => {
+            updated[rid] = { ...(updated[rid] || {}), ...mergedDelays[rid] };
+          });
+          return updated;
+        });
+
+        setData((prev) => {
+          const updatedTimetables = { ...prev.timetables };
+          Object.keys(mergedTimetables).forEach((rid) => {
+            updatedTimetables[rid] = {
+              ...(updatedTimetables[rid] || {}),
+              ...mergedTimetables[rid],
+            };
+          });
+
+          return {
+            ...prev,
+            delays: { ...prev.delays, ...mergedDelays },
+            timetables: updatedTimetables,
+          };
+        });
+
         if (isFirstLoad) {
           isFirstLoad = false;
           setTimetableReadyForStop(selectedStopId);
@@ -249,7 +322,6 @@ function App() {
             // 時刻表データを先読みしてから選択（キャッシュデータで誤スクロールしないため）
             try {
               const timetableData = await fetchStopTimetable(firstStopId);
-              // React 18のバッチ処理でこれど3つのセットは1レンダーにまとめられる
               setData((prev) => ({
                 ...prev,
                 delays: timetableData.delays ?? {},
@@ -309,6 +381,7 @@ function App() {
     setIsSearching(false);
   }, []);
 
+  // 💡 修正1: スマホ下部余白を 55% に調整
   const handleFlyToStop = useCallback((lng: number, lat: number) => {
     const map = mapRef.current;
     if (!map) return;
@@ -318,7 +391,7 @@ function App() {
       zoom: 17,
       speed: 1.2,
       padding: isMobile
-        ? { top: 0, bottom: window.innerHeight * 0.4, left: 0, right: 0 }
+        ? { top: 0, bottom: window.innerHeight * 0.55, left: 0, right: 0 }
         : { top: 0, bottom: 0, left: 400, right: 0 },
     });
     setZoom(17);

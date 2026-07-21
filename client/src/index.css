@@ -1,12 +1,83 @@
+/* ====================================================
+   仙台バスマップ — Design System Tokens & Base Styles
+   ==================================================== */
+
+:root {
+  /* --- Brand Colors --- */
+  --color-brand-50: hsl(221, 90%, 95%);
+  --color-brand-100: hsl(221, 85%, 88%);
+  --color-brand-200: hsl(221, 85%, 78%);
+  --color-brand-300: hsl(221, 83%, 68%);
+  --color-brand-400: hsl(221, 83%, 58%);
+  --color-brand-500: #2563eb; /* Royal Blue */
+  --color-brand-600: #1d4ed8;
+  --color-brand-700: #1e40af;
+
+  /* --- Neutral --- */
+  --color-neutral-0: hsl(220, 20%, 99%);
+  --color-neutral-50: hsl(220, 18%, 97%);
+  --color-neutral-100: hsl(220, 15%, 94%);
+  --color-neutral-200: hsl(220, 12%, 88%);
+  --color-neutral-300: hsl(220, 10%, 76%);
+  --color-neutral-400: hsl(220, 9%, 60%);
+  --color-neutral-500: hsl(220, 9%, 46%);
+  --color-neutral-600: hsl(220, 10%, 32%);
+  --color-neutral-700: hsl(220, 12%, 22%);
+  --color-neutral-800: hsl(220, 14%, 14%);
+  --color-neutral-900: hsl(220, 16%, 9%);
+
+  /* --- Semantic Status --- */
+  --color-empty: hsl(199, 92%, 56%);
+  --color-many: hsl(142, 52%, 48%);
+  --color-standing: hsl(42, 96%, 52%);
+  --color-full: hsl(4, 78%, 55%);
+  --color-delay: hsl(28, 100%, 54%);
+
+  /* --- Glass / Surface --- */
+  --glass-bg: rgba(255, 255, 255, 0.92);
+  --glass-bg-strong: rgba(255, 255, 255, 0.97);
+  --glass-border: rgba(255, 255, 255, 0.6);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+  --glass-shadow-lg:
+    0 20px 60px rgba(0, 0, 0, 0.18), 0 4px 16px rgba(0, 0, 0, 0.08);
+
+  /* --- Backdrop --- */
+  --backdrop-blur: blur(16px) saturate(180%);
+
+  /* --- Radius --- */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+  --radius-pill: 999px;
+
+  /* --- Typography --- */
+  --font-sans: "Inter", "Noto Sans JP", sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+
+  /* --- Transition --- */
+  --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-spring: 0.35s cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+/* ====================================================
+   Reset & Base
+   ==================================================== */
+
 html,
 body {
   height: 100%;
   margin: 0;
   padding: 0;
   overflow: hidden;
-  font-family: "Noto Sans JP", sans-serif;
+  font-family: var(--font-sans);
   font-optical-sizing: auto;
   font-style: normal;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--color-neutral-100);
+  color: var(--color-neutral-800);
 }
 
 #root {
@@ -14,7 +85,7 @@ body {
   width: 100%;
 }
 
-/* フォーム要素は常に親要素のフォントを継承 */
+/* Form elements inherit font */
 input,
 button,
 textarea,
@@ -24,5 +95,32 @@ select {
   -webkit-font-smoothing: antialiased;
 }
 
-/* 国土地理院タイルの出典（マップ右下） */
-/* 国土地理院の出典表示は MapLibre の組み込みアトリビューションを使用します */
+/* Smooth scroll for overflowing elements */
+* {
+  box-sizing: border-box;
+}
+
+@supports (scrollbar-width: thin) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-neutral-200) transparent;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-neutral-200);
+  border-radius: var(--radius-pill);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-neutral-300);
+}
