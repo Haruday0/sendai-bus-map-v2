@@ -388,7 +388,7 @@ const BusPanel: React.FC<BusPanelProps> = ({
         <div className="panel-title-content">
           <span
             className="route-badge"
-            style={{ backgroundColor: routeColor, color: "#ffffff" }}
+            style={{ backgroundColor: routeColor, color: "#1b4406" }}
           >
             {routeName}
           </span>
@@ -619,7 +619,7 @@ const BusPanel: React.FC<BusPanelProps> = ({
                             className="route-badge"
                             style={{
                               backgroundColor: badgeColor,
-                              color: "#ffffff",
+                              color: "#1b4406",
                             }}
                           >
                             {routeNum}
@@ -751,7 +751,7 @@ const BusPanel: React.FC<BusPanelProps> = ({
       panelData.initialTargetId
     ) {
       // バス停モードの場合、そのバス停の時刻表がサーバーから取得されるまで待機
-      // （キャッシュデータで誤った位置にスクロールしてしまう問題の回避）
+      // （キャッシュデータで誤スクロールしてしまう問題の回避）
       if (selectedStopId && timetableReadyForStop !== selectedStopId) return;
 
       const el = document.getElementById(panelData.initialTargetId);
