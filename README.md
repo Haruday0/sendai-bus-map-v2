@@ -1,4 +1,4 @@
-<h1 align="center">仙台市バスマップ</h1>
+<h1 align="center">仙台バスマップ</h1>
 
 <p align="center"><a href="https://busmap.haruday0.live" target="_blank"><strong style="font-size:18px">https://busmap.haruday0.live/</strong></a></p>
 
@@ -33,7 +33,6 @@
 ### 地図データ
 
 - **地図タイル**: [国土地理院 地理院タイル](https://maps.gsi.go.jp/development/ichiran.html)
-
 
 ### ソフトウェア・サービス
 
