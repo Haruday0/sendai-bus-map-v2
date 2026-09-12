@@ -56,6 +56,7 @@ function App() {
 
   // --- 地図インスタンスの参照 (FlyTo用) ---
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const boundsRequestIdRef = useRef(0);
 
   // --- 状態管理 ---
   const [activeLayer, setActiveLayer] = useState<"pale" | "ortho" | "osm">(
@@ -263,8 +264,10 @@ function App() {
   // 地図の移動に合わせて stops のみを fetchStopsByBounds で取得
   const handleBoundsChange = useCallback(
     async (minLat: number, maxLat: number, minLng: number, maxLng: number) => {
+      const requestId = ++boundsRequestIdRef.current;
       try {
         const stops = await fetchStopsByBounds(minLat, maxLat, minLng, maxLng);
+        if (requestId !== boundsRequestIdRef.current) return;
         setData((prev) => {
           // 新しいバス停情報を設定
           const newStops = { ...stops };
@@ -274,13 +277,17 @@ function App() {
             newStops[selectedStopId] = prev.stops[selectedStopId];
           }
 
+          if (selectedTrip && tripDetail) {
+            Object.assign(newStops, tripDetail.stops);
+          }
+
           return { ...prev, stops: newStops };
         });
       } catch (e) {
         console.error("failed to fetch stops by bounds", e);
       }
     },
-    [selectedStopId],
+    [selectedStopId, selectedTrip, tripDetail],
   );
 
   // ==================== 検索でバス停を選択 ====================

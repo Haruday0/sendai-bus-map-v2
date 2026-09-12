@@ -1,11 +1,20 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 // using Material Icons font for markers
 import type { AppData, PanelTrip, BusPosition } from "../types";
 import { fetchBusPositions } from "../dataLoader";
 import { formatHeadsign } from "../utils";
+
+const busMarkerRoots = new WeakMap<HTMLElement, Root>();
+
+function disposeBusMarker(marker: maplibregl.Marker): void {
+  const element = marker.getElement();
+  busMarkerRoots.get(element)?.unmount();
+  busMarkerRoots.delete(element);
+  marker.remove();
+}
 
 interface MapContainerProps {
   data: AppData;
@@ -68,6 +77,7 @@ function createBusMarkerElement(
   iconWrapper.className = "bus-icon-wrapper";
   container.appendChild(iconWrapper);
   const root = createRoot(iconWrapper);
+  busMarkerRoots.set(container, root);
   root.render(
     <span className="material-icons-outlined bus-marker-icon" aria-hidden>
       directions_bus
@@ -99,6 +109,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   const mapRef = useRef<maplibregl.Map | null>(null);
   const stopMarkersRef = useRef<maplibregl.Marker[]>([]);
   const busMarkersRef = useRef<Record<string, maplibregl.Marker>>({});
+  const busRequestIdRef = useRef(0);
 
   // 地図の準備完了状態を管理
   const isStyleLoadedRef = useRef(false);
@@ -200,6 +211,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
     const map = mapRef.current;
     if (!map || !isStyleLoadedRef.current) return;
+    const requestId = ++busRequestIdRef.current;
 
     try {
       // 地図の表示範囲を取得
@@ -211,6 +223,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
       // サーバーから範囲内のバス位置を取得
       const buses = await fetchBusPositions(minLat, maxLat, minLng, maxLng);
+      if (requestId !== busRequestIdRef.current) return;
       // デバッグ: 取得範囲と件数をログ出力
       try {
         console.debug(
@@ -236,7 +249,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
         if (selectedTrip && tripId !== selectedTrip.tripId) {
           // 選択されていないバスのマーカーを削除
           if (busMarkersRef.current[tripId]) {
-            busMarkersRef.current[tripId].remove();
+            disposeBusMarker(busMarkersRef.current[tripId]);
             delete busMarkersRef.current[tripId];
           }
           return;
@@ -256,6 +269,21 @@ const MapContainer: React.FC<MapContainerProps> = ({
                 bus.speed_kmh,
                 bus.occupancy_status,
               );
+
+              const isMobile = window.innerWidth < 768;
+              map.flyTo({
+                center: bus.position as [number, number],
+                zoom: map.getZoom(),
+                speed: 1.2,
+                padding: isMobile
+                  ? {
+                      top: 0,
+                      bottom: window.innerHeight * 0.55,
+                      left: 0,
+                      right: 0,
+                    }
+                  : { top: 0, bottom: 0, left: 400, right: 0 },
+              });
             },
           );
 
@@ -279,7 +307,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
       if (!selectedTrip) {
         Object.keys(busMarkersRef.current).forEach((tripId) => {
           if (!activeTripIds.has(tripId)) {
-            busMarkersRef.current[tripId].remove();
+            disposeBusMarker(busMarkersRef.current[tripId]);
             delete busMarkersRef.current[tripId];
           }
         });
@@ -424,7 +452,6 @@ const MapContainer: React.FC<MapContainerProps> = ({
         return;
       }
 
-      updateStopMarkers();
       updateBuses();
       try {
         const b = map.getBounds();
@@ -613,6 +640,9 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
     return () => {
       clearInterval(busInterval);
+      busRequestIdRef.current += 1;
+      Object.values(busMarkersRef.current).forEach(disposeBusMarker);
+      busMarkersRef.current = {};
       map.remove();
       mapRef.current = null;
     };

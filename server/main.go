@@ -179,6 +179,8 @@ const (
 
 var realtimeCacheTTL = 5 * time.Second
 
+var odptHTTPClient = &http.Client{Timeout: 15 * time.Second}
+
 func loadEnv() {
 	_ = godotenv.Load(".env")
 	_ = godotenv.Load("server/.env")
@@ -244,7 +246,7 @@ func fetchVehiclePositionsFromODPT() ([]BusPosition, error) {
 	q.Set("acl:consumerKey", token)
 	u.RawQuery = q.Encode()
 
-	res, err := http.Get(u.String())
+	res, err := odptHTTPClient.Get(u.String())
 	if err != nil {
 		return nil, err
 	}
@@ -468,6 +470,41 @@ func filterBusesByBounds(buses []BusPosition, minLat, maxLat, minLng, maxLng flo
 	return filtered
 }
 
+func parseBounds(c *gin.Context) (float64, float64, float64, float64, bool, error) {
+	values := []string{
+		c.Query("minLat"),
+		c.Query("maxLat"),
+		c.Query("minLng"),
+		c.Query("maxLng"),
+	}
+	provided := false
+	for _, value := range values {
+		if value != "" {
+			provided = true
+			break
+		}
+	}
+	if !provided {
+		return 0, 0, 0, 0, false, nil
+	}
+
+	parsed := make([]float64, len(values))
+	for i, value := range values {
+		if value == "" {
+			return 0, 0, 0, 0, true, fmt.Errorf("all bounds parameters are required")
+		}
+		parsedValue, err := strconv.ParseFloat(value, 64)
+		if err != nil || math.IsNaN(parsedValue) || math.IsInf(parsedValue, 0) {
+			return 0, 0, 0, 0, true, fmt.Errorf("invalid bounds parameter")
+		}
+		parsed[i] = parsedValue
+	}
+	if parsed[0] > parsed[1] || parsed[2] > parsed[3] {
+		return 0, 0, 0, 0, true, fmt.Errorf("invalid bounds range")
+	}
+	return parsed[0], parsed[1], parsed[2], parsed[3], true, nil
+}
+
 func loadJSTLocation() *time.Location {
 	loc, err := time.LoadLocation("Asia/Tokyo")
 	if err != nil {
@@ -687,7 +724,7 @@ func fetchTripUpdatesFromODPT() (map[string]*TripRealtimeUpdate, error) {
 	q.Set("acl:consumerKey", token)
 	u.RawQuery = q.Encode()
 
-	res, err := http.Get(u.String())
+	res, err := odptHTTPClient.Get(u.String())
 	if err != nil {
 		return make(map[string]*TripRealtimeUpdate), err
 	}
@@ -838,15 +875,11 @@ func main() {
 	})
 
 	r.GET("/api/stops/search", func(c *gin.Context) {
-		minLatStr := c.Query("minLat")
-		maxLatStr := c.Query("maxLat")
-		minLngStr := c.Query("minLng")
-		maxLngStr := c.Query("maxLng")
-
-		minLat, _ := strconv.ParseFloat(minLatStr, 64)
-		maxLat, _ := strconv.ParseFloat(maxLatStr, 64)
-		minLng, _ := strconv.ParseFloat(minLngStr, 64)
-		maxLng, _ := strconv.ParseFloat(maxLngStr, 64)
+		minLat, maxLat, minLng, maxLng, _, err := parseBounds(c)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 
 		filteredStops := filterStopsByBounds(minLat, maxLat, minLng, maxLng)
 		c.JSON(http.StatusOK, gin.H{
@@ -856,10 +889,11 @@ func main() {
 	})
 
 	r.GET("/api/buses", func(c *gin.Context) {
-		minLatStr := c.Query("minLat")
-		maxLatStr := c.Query("maxLat")
-		minLngStr := c.Query("minLng")
-		maxLngStr := c.Query("maxLng")
+		minLat, maxLat, minLng, maxLng, boundsProvided, boundsErr := parseBounds(c)
+		if boundsErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": boundsErr.Error()})
+			return
+		}
 
 		buses, err := getRealtimeBusPositions()
 		realtimeErrStr := ""
@@ -918,11 +952,7 @@ func main() {
 			}
 		}
 
-		if minLatStr != "" && maxLatStr != "" {
-			minLat, _ := strconv.ParseFloat(minLatStr, 64)
-			maxLat, _ := strconv.ParseFloat(maxLatStr, 64)
-			minLng, _ := strconv.ParseFloat(minLngStr, 64)
-			maxLng, _ := strconv.ParseFloat(maxLngStr, 64)
+		if boundsProvided {
 			buses = filterBusesByBounds(buses, minLat, maxLat, minLng, maxLng)
 		}
 
@@ -982,7 +1012,7 @@ func main() {
 			stopIDs[i] = stop.StopID
 		}
 		patternKey := strings.Join(stopIDs, "|")
-		shape := shapesCache[patternKey]
+		shape, hasShape := shapesCache[patternKey]
 
 		delays := make(map[string]int64)
 		tripDelay := int64(0)
@@ -995,18 +1025,21 @@ func main() {
 			}
 		}
 
-		c.JSON(http.StatusOK, TripDetailResponse{
+		response := TripDetailResponse{
 			TripID:     tripID,
 			RouteID:    routeID,
 			RouteName:  routesCache[routeID].ShortName,
 			RouteColor: routesCache[routeID].Color,
 			Trip:       trip,
 			Stops:      tripStops,
-			Shape:      &shape,
 			OfficeName: extraCache.Offices[trip.OfficeID],
 			Delays:     delays,
 			TripDelay:  tripDelay,
-		})
+		}
+		if hasShape {
+			response.Shape = &shape
+		}
+		c.JSON(http.StatusOK, response)
 	})
 
 	r.GET("/api/stops/:stopId/timetable", func(c *gin.Context) {
