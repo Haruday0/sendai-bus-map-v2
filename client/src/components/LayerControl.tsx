@@ -26,8 +26,12 @@ const LayerControl: React.FC<LayerControlProps> = ({
 
   return (
     <div id="layer-control-container">
-      <div
+      <button
         id="layer-btn"
+        type="button"
+        aria-label="地図レイヤー切り替え"
+        aria-expanded={layerMenuOpen}
+        aria-controls="layer-menu"
         onClick={(e) => {
           e.stopPropagation();
           setLayerMenuOpen((v) => !v);
@@ -37,7 +41,7 @@ const LayerControl: React.FC<LayerControlProps> = ({
         <span className="material-icons-outlined" aria-hidden>
           layers
         </span>
-      </div>
+      </button>
       <div id="layer-menu" className={layerMenuOpen ? "show" : ""}>
         <div className="layer-group-title">OpenStreetMap</div>
         <div
