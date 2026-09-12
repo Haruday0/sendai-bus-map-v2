@@ -379,10 +379,12 @@ const BusPanel: React.FC<BusPanelProps> = ({
       // 便詳細表示モード
       const trip = tripDetail.trip;
       const routeName = tripDetail.route_name;
-      const routeObj = data.routes[selectedTrip.routeId];
-      const routeColor = routeObj?.color
-        ? `#${routeObj.color.replace(/^#/, "")}`
-        : "#00703c";
+      // 💡 tripDetail の正式なカラーを最優先で使用
+      const routeColor = tripDetail.route_color
+        ? `#${tripDetail.route_color.replace(/^#/, "")}`
+        : data.routes[tripDetail.route_id]?.color
+          ? `#${data.routes[tripDetail.route_id].color.replace(/^#/, "")}`
+          : "#a3d742";
       via = trip.via ? `${trip.via} 経由` : "";
       title = (
         <div className="panel-title-content">

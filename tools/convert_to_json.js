@@ -14,12 +14,15 @@ async function start() {
   }
   console.log("GTFSデータの解析およびジオメトリ生成プロセスを開始します...");
 
+  // 💡 BOM（目に見えない制御文字）があってもなくても自動で安全に読み込む処理
   const read = (file) => {
     const filePath = path.join(inputDir, file);
     if (!fs.existsSync(filePath)) return [];
-    return parse(fs.readFileSync(filePath, "utf-8"), {
+    const content = fs.readFileSync(filePath, "utf-8").replace(/^\uFEFF/, "");
+    return parse(content, {
       columns: true,
       skip_empty_lines: true,
+      bom: true,
     });
   };
 
@@ -321,7 +324,7 @@ async function start() {
   write("stops.json", stopsJson);
   write("routes.json", routesJson);
   write("timetables.json", timetablesJson);
-  write("shapes.json", finalShapes); // <--- ここを finalShapes に修正！
+  write("shapes.json", finalShapes);
   write("calendar.json", calendarJson);
   write("extra.json", extraJson);
 

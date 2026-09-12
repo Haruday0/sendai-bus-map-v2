@@ -289,11 +289,67 @@ func fetchVehiclePositionsFromODPT() ([]BusPosition, error) {
 			tripID = "rt_" + entity.GetId()
 		}
 
-		routeName, color := routeMeta(routeID)
+		actualRouteID := routeID
+		var actualTrip *TripInfo
+
+		// まず申告された routeID で便を探す
+		if routeTrips, ok := timetablesCache[routeID]; ok {
+			if t, ok := routeTrips[tripID]; ok {
+				actualTrip = &t
+			}
+		}
+
+		// 💡 見つからない場合、全路線から本当の所属路線を探して自動補正
+		if actualTrip == nil {
+			for rid, routeTrips := range timetablesCache {
+				if t, ok := routeTrips[tripID]; ok {
+					actualRouteID = rid
+					actualTrip = &t
+					break
+				}
+			}
+		}
+
+		// 正しい路線IDから、正式な系統名（例: X910）とカラーを取得
+		routeName, color := routeMeta(actualRouteID)
+
+		// 正しい便データから、正式な行先を取得
+		headsign := headsignByTrip(actualRouteID, tripID)
+		if headsign == "" && actualTrip != nil {
+			headsign = actualTrip.Headsign
+		}
+
 		delaySeconds := int64(0)
 		nextStopID := vehicle.GetStopId()
 		scheduledArrivalTime := ""
 		estimatedArrivalTime := ""
+
+		// TripUpdate が利用できない場合に備え、Vehicle の timestamp から簡易遅延推定
+		if routeTrips, ok := timetablesCache[actualRouteID]; ok {
+			if tripInfo, ok := routeTrips[tripID]; ok && nextStopID != "" {
+				for _, st := range tripInfo.Stops {
+					if st.StopID != nextStopID {
+						continue
+					}
+					scheduledArrivalTime = st.Time
+					scheduledSec := timeToSec(st.Time)
+					ts := int64(vehicle.GetTimestamp())
+					if ts > 0 {
+						actual := time.Unix(ts, 0).In(jstLocation)
+						actualSec := actual.Hour()*3600 + actual.Minute()*60 + actual.Second()
+						delta := actualSec - scheduledSec
+						if delta > 12*3600 {
+							delta -= 24 * 3600
+						} else if delta < -12*3600 {
+							delta += 24 * 3600
+						}
+						delaySeconds = int64(delta)
+						estimatedArrivalTime = secToTime(scheduledSec + delta)
+					}
+					break
+				}
+			}
+		}
 
 		// TripUpdate が利用できない場合に備え、Vehicle の timestamp から簡易遅延推定
 		if routeTrips, ok := timetablesCache[routeID]; ok {
@@ -333,9 +389,9 @@ func fetchVehiclePositionsFromODPT() ([]BusPosition, error) {
 
 		buses = append(buses, BusPosition{
 			TripID:               tripID,
-			RouteID:              routeID,
+			RouteID:              actualRouteID, // 💡 actualRouteID に変更
 			RouteName:            routeName,
-			Headsign:             headsignByTrip(routeID, tripID),
+			Headsign:             headsign, // 💡 補正後の headsign を使用
 			Position:             []float64{float64(pos.GetLongitude()), float64(pos.GetLatitude())},
 			SpeedKmh:             float64(pos.GetSpeed()) * 3.6,
 			OccupancyStatus:      occupancyStatus,
@@ -885,13 +941,31 @@ func main() {
 		routeID := c.Param("routeId")
 		tripID := c.Param("tripId")
 
-		routeTrips, ok := timetablesCache[routeID]
-		if !ok {
-			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
-			return
+		var trip TripInfo
+		found := false
+
+		// 1. まずリクエストされた routeID で便を探す
+		if routeTrips, ok := timetablesCache[routeID]; ok {
+			if t, ok := routeTrips[tripID]; ok {
+				trip = t
+				found = true
+			}
 		}
-		trip, ok := routeTrips[tripID]
-		if !ok {
+
+		// 2. 💡 見つからない場合、路線IDのズレを考慮して全路線から tripID を探す（自動救済）
+		if !found {
+			for rid, routeTrips := range timetablesCache {
+				if t, ok := routeTrips[tripID]; ok {
+					trip = t
+					routeID = rid // 正しい routeID に自動補正
+					found = true
+					break
+				}
+			}
+		}
+
+		// 3. それでも見つからない場合のみ 404 Not Found
+		if !found {
 			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 			return
 		}
