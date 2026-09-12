@@ -488,6 +488,12 @@ const BusPanel: React.FC<BusPanelProps> = ({
           </div>
         );
       });
+    } else if (selectedTrip && selectedTrip.tripId.startsWith("rt_")) {
+      items = [
+        <div key="nodata" className="empty-message">
+          このバスは詳細な経路・時刻表情報がありません。
+        </div>,
+      ];
     } else if (selectedTrip && !tripDetail) {
       items = [
         <div key="loading" className="empty-message">
