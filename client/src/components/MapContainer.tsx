@@ -289,6 +289,21 @@ const MapContainer: React.FC<MapContainerProps> = ({
     }
   }, [selectedTrip, onBusClick, isUpdatesPaused]);
 
+  const updateBusMarkerDisplay = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const isCompact = map.getZoom() < 15.0;
+    Object.values(busMarkersRef.current).forEach((marker) => {
+      marker.getElement().classList.toggle("compact", isCompact);
+    });
+  }, []);
+
+  const updateZoomDependentDisplay = useCallback(() => {
+    updateBusMarkerDisplay();
+    updateStopMarkers();
+  }, [updateBusMarkerDisplay, updateStopMarkers]);
+
   // --- ルートライン描画 ---
   const drawRouteLine = useCallback(() => {
     const map = mapRef.current;
@@ -403,6 +418,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
     const moveendHandler = () => {
       onZoomChange(map.getZoom());
+      updateZoomDependentDisplay();
 
       if (isPanelOpenRef.current) {
         return;
@@ -424,6 +440,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
     const zoomHandler = () => {
       onZoomChange(map.getZoom());
+      updateBusMarkerDisplay();
     };
 
     const clickHandler = (e: maplibregl.MapMouseEvent) => {
@@ -449,6 +466,8 @@ const MapContainer: React.FC<MapContainerProps> = ({
     onMoveStart,
     updateBuses,
     updateStopMarkers,
+    updateBusMarkerDisplay,
+    updateZoomDependentDisplay,
     onZoomChange,
     onBoundsChange,
   ]);
