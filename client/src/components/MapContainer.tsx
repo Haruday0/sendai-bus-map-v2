@@ -344,6 +344,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   }, [data, selectedTrip]);
 
   // ハンドラの最新版を参照する Ref（map 初期化時に安全に呼び出すため）
+  const drawRouteLineRef = useRef(drawRouteLine);
   const updateStopMarkersRef = useRef(updateStopMarkers);
   const updateBusesRef = useRef(updateBuses);
   const onBoundsChangeRef = useRef(onBoundsChange);
@@ -373,6 +374,9 @@ const MapContainer: React.FC<MapContainerProps> = ({
   );
 
   // ハンドラ refs を常に最新に
+  useEffect(() => {
+    drawRouteLineRef.current = drawRouteLine;
+  }, [drawRouteLine]);
   useEffect(() => {
     updateStopMarkersRef.current = updateStopMarkers;
   }, [updateStopMarkers]);
@@ -552,6 +556,11 @@ const MapContainer: React.FC<MapContainerProps> = ({
       }
       try {
         updateBusesRef.current();
+      } catch {
+        // noop
+      }
+      try {
+        drawRouteLineRef.current();
       } catch {
         // noop
       }
