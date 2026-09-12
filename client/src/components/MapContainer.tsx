@@ -110,6 +110,11 @@ const MapContainer: React.FC<MapContainerProps> = ({
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialLayerRef = useRef<"pale" | "ortho" | "osm">(activeLayer);
 
+  const isPanelOpenRef = useRef(isPanelOpen);
+  useEffect(() => {
+    isPanelOpenRef.current = isPanelOpen;
+  }, [isPanelOpen]);
+
   // 外部参照用の ref 同期
   useEffect(() => {
     setMapRef(mapRef.current);
@@ -393,9 +398,14 @@ const MapContainer: React.FC<MapContainerProps> = ({
     if (!map) return;
 
     const moveendHandler = () => {
+      onZoomChange(map.getZoom());
+
+      if (isPanelOpenRef.current) {
+        return;
+      }
+
       updateStopMarkers();
       updateBuses();
-      onZoomChange(map.getZoom());
       try {
         const b = map.getBounds();
         if (b && typeof onBoundsChange === "function") {

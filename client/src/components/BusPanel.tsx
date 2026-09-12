@@ -115,6 +115,22 @@ const BusPanel: React.FC<BusPanelProps> = ({
   >({});
   const contentRef = useRef<HTMLDivElement>(null);
 
+  const currentSelectionKey = selectedTrip
+    ? `trip-${selectedTrip.tripId}`
+    : `stop-${selectedStopId}`;
+  const [initialZoom, setInitialZoom] = useState(zoom);
+  const initialZoomSelectionRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedStopId && !selectedTrip) {
+      initialZoomSelectionRef.current = null;
+      return;
+    }
+    if (initialZoomSelectionRef.current !== currentSelectionKey) {
+      initialZoomSelectionRef.current = currentSelectionKey;
+      setInitialZoom(zoom);
+    }
+  }, [currentSelectionKey, selectedStopId, selectedTrip, zoom]);
+
   // 時刻更新用タイマー
   useEffect(() => {
     const updateTime = () => {
@@ -159,10 +175,6 @@ const BusPanel: React.FC<BusPanelProps> = ({
       clearInterval(interval);
     };
   }, [selectedStopId, selectedTrip]);
-
-  const currentSelectionKey = selectedTrip
-    ? `trip-${selectedTrip.tripId}`
-    : `stop-${selectedStopId}`;
 
   const debugTripJson = useMemo(() => {
     if (!isDebugMode || !selectedTrip) return "";
@@ -504,7 +516,7 @@ const BusPanel: React.FC<BusPanelProps> = ({
       // バス停時刻表モード
       const stop = data.stops[selectedStopId];
       if (stop) {
-        const isGrouped = zoom < 16.5;
+        const isGrouped = initialZoom < 16.5;
         const targetIds = isGrouped
           ? Object.keys(data.stops).filter(
               (id) => data.stops[id].name === stop.name,
@@ -737,7 +749,7 @@ const BusPanel: React.FC<BusPanelProps> = ({
     stopDelays,
     tripOccupancyMap,
     currentTime,
-    zoom,
+    initialZoom,
     onSelectBus,
     onFlyToStop,
   ]);
