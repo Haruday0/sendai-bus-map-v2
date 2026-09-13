@@ -337,76 +337,53 @@ const MapContainer: React.FC<MapContainerProps> = ({
     const map = mapRef.current;
     if (!map || !isStyleLoadedRef.current) return;
 
-    const clearRouteLine = () => {
-      if (map.getLayer("route-arrows")) map.removeLayer("route-arrows");
-      if (map.getLayer("route-line")) map.removeLayer("route-line");
-      if (map.getSource("route")) map.removeSource("route");
-    };
+    if (map.getLayer("route-arrows")) map.removeLayer("route-arrows");
+    if (map.getLayer("route-line")) map.removeLayer("route-line");
+    if (map.getSource("route")) map.removeSource("route");
 
-    if (!selectedTrip) {
-      clearRouteLine();
-      return;
-    }
+    if (!selectedTrip) return;
 
     const trip = data.timetables[selectedTrip.routeId]?.[selectedTrip.tripId];
-    if (!trip) {
-      clearRouteLine();
-      return;
-    }
+    if (!trip) return;
 
     const patternKey = trip.stops.map((s) => s.stop_id).join("|");
     const shape = data.shapes[patternKey];
-    if (!shape) {
-      clearRouteLine();
-      return;
-    }
+    if (!shape) return;
 
     const routeInfo = data.routes[selectedTrip.routeId];
-    const routeData = {
-      type: "Feature" as const,
-      properties: {},
-      geometry: { type: "LineString" as const, coordinates: shape.coordinates },
-    };
-    const routeSource = map.getSource("route") as maplibregl.GeoJSONSource | undefined;
 
-    if (routeSource) {
-      routeSource.setData(routeData);
-    } else {
-      map.addSource("route", { type: "geojson", data: routeData });
-    }
-
-    const routeColor = "#" + (routeInfo?.color || "00703c");
-    if (!map.getLayer("route-line")) {
-      map.addLayer({
-        id: "route-line",
-        type: "line",
-        source: "route",
-        paint: {
-          "line-color": routeColor,
-          "line-width": 8,
-          "line-opacity": 0.6,
-        },
-      });
-    } else {
-      map.setPaintProperty("route-line", "line-color", routeColor);
-    }
-
-    if (!map.getLayer("route-arrows") && map.hasImage("arrow")) {
-      map.addLayer({
-        id: "route-arrows",
-        type: "symbol",
-        source: "route",
-        layout: {
-          "symbol-placement": "line",
-          "symbol-spacing": 80,
-          "icon-image": "arrow",
-          "icon-size": 0.5,
-          "icon-rotate": 270,
-          "icon-allow-overlap": true,
-          "icon-ignore-placement": true,
-        },
-      });
-    }
+    map.addSource("route", {
+      type: "geojson",
+      data: {
+        type: "Feature",
+        properties: {},
+        geometry: { type: "LineString", coordinates: shape.coordinates },
+      },
+    });
+    map.addLayer({
+      id: "route-line",
+      type: "line",
+      source: "route",
+      paint: {
+        "line-color": "#" + (routeInfo?.color || "00703c"),
+        "line-width": 8,
+        "line-opacity": 0.6,
+      },
+    });
+    map.addLayer({
+      id: "route-arrows",
+      type: "symbol",
+      source: "route",
+      layout: {
+        "symbol-placement": "line",
+        "symbol-spacing": 80,
+        "icon-image": "arrow",
+        "icon-size": 0.5,
+        "icon-rotate": 270,
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true,
+      },
+    });
   }, [data, selectedTrip]);
 
   // ハンドラの最新版を参照する Ref（map 初期化時に安全に呼び出すため）
