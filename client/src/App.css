@@ -482,7 +482,7 @@
   color: var(--color-neutral-400);
 }
 
-/* Panel content (Edge Tools 警告の非推奨プロパティを削除済み) */
+/* Panel content */
 .panel-content {
   flex: 1;
   overflow-y: auto;
@@ -744,15 +744,14 @@
 
 .panel-title-content .destination-name {
   white-space: normal;
-  /* 💡 GoogleのBudouXエンジンを使って単語の区切りで自然に改行する */
   word-break: auto-phrase;
   line-height: 1.25;
 }
 
-/* 💡 時刻表リスト行：バッジとテキストをCSSのFlexboxで確実に縦中央に揃える */
+/* 💡 時刻表リスト行：バッジとテキストを縦中央に揃える */
 .item-destination-row {
   display: flex;
-  align-items: center; /* コンテナ全体を縦中央揃え */
+  align-items: center;
   gap: 6px;
   width: 100%;
   min-width: 0;
@@ -804,7 +803,6 @@
   align-items: stretch;
 }
 
-/* 混雑度アイコンの縦中央揃え */
 .item-info-with-icon {
   display: flex;
   align-items: center;
@@ -977,26 +975,20 @@
   visibility: hidden;
   opacity: 0;
   pointer-events: none;
-  transform: translateZ(0);
-  contain: layout paint;
-  will-change: opacity, transform, backdrop-filter;
-}
-
-@keyframes menuIn {
-  from {
-    opacity: 0;
-    transform: translateY(-8px) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+  /* 💡 開く前の位置を少し上にずらしておく */
+  transform: translateY(-6px) scale(0.97);
+  /* 💡 0.12秒の超高速トランジションで即座に反応 */
+  transition:
+    opacity 0.12s ease-out,
+    transform 0.12s ease-out,
+    visibility 0.12s ease-out;
 }
 
 #layer-menu.show {
   visibility: visible;
   opacity: 1;
   pointer-events: auto;
+  transform: translateY(0) scale(1);
 }
 
 .layer-item {
@@ -1044,7 +1036,7 @@
   position: absolute;
   right: 8px;
   bottom: 8px;
-  z-index: 6500;
+  z-index: 7 500;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1379,7 +1371,6 @@
     height: 11px;
   }
 
-  /* パネル表示中はGitHubボタンを非表示 */
   #bottom-panel.open ~ #github-footer-link {
     opacity: 0;
     visibility: hidden;
@@ -1387,7 +1378,6 @@
     transform: translateY(4px);
   }
 
-  /* パネル表示中は出典バッジも非表示 */
   .map-attribution.panel-open {
     opacity: 0;
     visibility: hidden;
@@ -1397,7 +1387,6 @@
 }
 
 /* ===================== GLASS SURFACE REFINEMENTS ===================== */
-/* 地図を背景に感じられる透明度を保ちつつ、文字の可読性は既存の配色で維持する。 */
 #bottom-panel {
   background: var(--glass-bg-strong);
 }
@@ -1457,7 +1446,6 @@
   border-bottom-color: rgba(255, 255, 255, 0.42);
 }
 
-/* バスの状態を示す小さな面も、地図と同じガラスの質感で統一する。 */
 .occupancy-info,
 .speed-info {
   background: rgba(255, 255, 255, 0.42);
@@ -1469,9 +1457,118 @@
   backdrop-filter: blur(10px) saturate(145%);
 }
 
-/* PCではパネルを検索欄の影より前面に置き、影がパネル上へ落ちないようにする。 */
 @media (min-width: 768px) {
   #bottom-panel {
     z-index: 8000;
   }
+}
+
+/* ===================== LOCATION BUTTON (右下配置) ============ */
+#location-control-container {
+  position: absolute;
+  bottom: 40px;
+  right: 20px;
+  z-index: 7000;
+  transition:
+    bottom var(--transition-spring),
+    transform var(--transition-spring);
+}
+
+#location-btn {
+  /* 💡 アプリ共通のガラスモーフィズム（すりガラス背景 ＋ ガラス枠 ＋ ガラス影） */
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+  backdrop-filter: var(--backdrop-blur);
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background var(--transition-fast),
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast);
+  color: var(--color-neutral-600);
+}
+
+#location-btn:hover {
+  /* 💡 レイヤーボタンと全く同じホバー時の白浮き上がり・影の深み */
+  background: rgba(255, 255, 255, 0.86);
+  transform: scale(1.05);
+  box-shadow: 0 12px 28px rgba(22, 49, 67, 0.2);
+  color: var(--color-brand-500);
+}
+
+#location-btn:active {
+  /* 💡 レイヤーボタンと全く同じタップ時の沈み込み */
+  background: rgba(255, 255, 255, 0.64);
+  transform: scale(0.95);
+  color: var(--color-brand-500);
+}
+/* 💡 ボタン拡大に合わせてアイコンも 22px ➔ 26px に拡大 */
+#location-btn .material-icons-outlined {
+  font-size: 26px;
+}
+
+#location-btn:hover {
+  background: rgba(255, 255, 255, 0.86);
+  transform: scale(1.06);
+  box-shadow: 0 12px 28px rgba(22, 49, 67, 0.2);
+  color: var(--color-brand-500);
+}
+
+#location-btn:active {
+  background: rgba(255, 255, 255, 0.64);
+  transform: scale(0.96);
+  color: var(--color-brand-500);
+}
+
+/* 💡 アイコンサイズもレイヤーボタンと全く同じ22pxに統一 */
+#location-btn .material-icons-outlined {
+  font-size: 22px;
+}
+
+@media (max-width: 767px) {
+  #location-control-container {
+    bottom: 36px;
+    right: 14px;
+  }
+
+  /* 下部パネルが開いているときは、パネルの上にボタンを浮き上がらせる */
+  #location-control-container.panel-open {
+    bottom: calc(60% + 24px);
+  }
+
+  body.is-searching #location-control-container {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
+
+/* ===================== USER LOCATION DOT ===================== */
+/* 💡 薄い青は地図上に描くため、CSS側は中心の青丸を置くだけの透明枠にする */
+.user-location-marker {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+/* 💡 中心の青丸（白枠2.5px、サイズ16px） */
+.user-location-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background-color: var(--color-brand-500);
+  border: 2.5px solid #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
 }

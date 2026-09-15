@@ -7,6 +7,35 @@ import type { AppData, PanelTrip, BusPosition } from "../types";
 import { fetchBusPositions } from "../dataLoader";
 import { formatHeadsign } from "../utils";
 
+function createGeoJSONCircle(
+  center: [number, number],
+  radiusInMeters: number,
+  points = 64,
+) {
+  const [lng, lat] = center;
+  const coords: [number, number][] = [];
+  const km = radiusInMeters / 1000;
+  const distanceX = km / (111.32 * Math.cos((lat * Math.PI) / 180));
+  const distanceY = km / 110.574;
+
+  for (let i = 0; i < points; i++) {
+    const theta = (i / points) * (2 * Math.PI);
+    const x = distanceX * Math.cos(theta);
+    const y = distanceY * Math.sin(theta);
+    coords.push([lng + x, lat + y]);
+  }
+  coords.push(coords[0]);
+
+  return {
+    type: "Feature" as const,
+    geometry: {
+      type: "Polygon" as const,
+      coordinates: [coords],
+    },
+    properties: {},
+  };
+}
+
 const busMarkerRoots = new WeakMap<HTMLElement, Root>();
 
 function disposeBusMarker(marker: maplibregl.Marker): void {
@@ -32,7 +61,7 @@ interface MapContainerProps {
   onMapClick: () => void;
   onMoveStart: () => void;
   onZoomChange: (zoom: number) => void;
-  updateBuses?: () => void; // 内部用だが型定義上必要なら
+  updateBuses?: () => void;
   setMapRef: (map: maplibregl.Map | null) => void;
   onBoundsChange?: (
     minLat: number,
@@ -112,6 +141,10 @@ const MapContainer: React.FC<MapContainerProps> = ({
   const busRequestIdRef = useRef(0);
   const compactDisplayRef = useRef<boolean | null>(null);
 
+  // 現在地マーカーと連打防止用フラグ
+  const currentLocationMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const isLocatingRef = useRef(false);
+
   // 地図の準備完了状態を管理
   const isStyleLoadedRef = useRef(false);
   const [, forceUpdate] = useState({});
@@ -183,7 +216,6 @@ const MapContainer: React.FC<MapContainerProps> = ({
         .setLngLat([stop.lng, stop.lat])
         .addTo(map);
 
-      // 💡 修正1: ピンタップ時にスマホ下部55%の余白を入れてパネル被りを防ぐ
       el.addEventListener("click", (e) => {
         e.stopPropagation();
         onStopClick(id, map.getZoom());
@@ -205,7 +237,6 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
   // --- バスマーカー更新 ---
   const updateBuses = useCallback(async () => {
-    // 更新が一時停止されている場合はスキップ
     if (isUpdatesPaused) {
       return;
     }
@@ -215,17 +246,15 @@ const MapContainer: React.FC<MapContainerProps> = ({
     const requestId = ++busRequestIdRef.current;
 
     try {
-      // 地図の表示範囲を取得
       const bounds = map.getBounds();
       const minLat = bounds.getSouth();
       const maxLat = bounds.getNorth();
       const minLng = bounds.getWest();
       const maxLng = bounds.getEast();
 
-      // サーバーから範囲内のバス位置を取得
       const buses = await fetchBusPositions(minLat, maxLat, minLng, maxLng);
       if (requestId !== busRequestIdRef.current) return;
-      // デバッグ: 取得範囲と件数をログ出力
+
       try {
         console.debug(
           "fetchBusPositions bounds:",
@@ -239,16 +268,12 @@ const MapContainer: React.FC<MapContainerProps> = ({
       const zoom = map.getZoom();
       const isCompact = zoom < 15.0;
 
-      // 現在のマーカーIDセット
       const activeTripIds = new Set<string>();
 
-      // 取得したバスをマーカーとして配置
       buses.forEach((bus: BusPosition) => {
         const tripId = bus.trip_id;
 
-        // selectedTripがある場合、そのtripIdのみ表示
         if (selectedTrip && tripId !== selectedTrip.tripId) {
-          // 選択されていないバスのマーカーを削除
           if (busMarkersRef.current[tripId]) {
             disposeBusMarker(busMarkersRef.current[tripId]);
             delete busMarkersRef.current[tripId];
@@ -304,7 +329,6 @@ const MapContainer: React.FC<MapContainerProps> = ({
         else markerEl.classList.remove("compact");
       });
 
-      // 運行終了したバスのマーカーを削除（selectedTripがない場合のみ）
       if (!selectedTrip) {
         Object.keys(busMarkersRef.current).forEach((tripId) => {
           if (!activeTripIds.has(tripId)) {
@@ -332,6 +356,120 @@ const MapContainer: React.FC<MapContainerProps> = ({
     updateBusMarkerDisplay();
     updateStopMarkers();
   }, [updateBusMarkerDisplay, updateStopMarkers]);
+
+  // --- ユーザーの現在地を取得して移動 ---
+  const handleLocateUser = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (!navigator.geolocation) {
+      alert("お使いのブラウザは位置情報機能に対応していません。");
+      return;
+    }
+
+    if (isLocatingRef.current) return;
+    isLocatingRef.current = true;
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        isLocatingRef.current = false;
+        // 💡 accuracy（GPSの誤差メートル）も一緒に受け取る
+        const { longitude, latitude, accuracy } = position.coords;
+
+        // 1. 地図の縮尺に合わせて伸び縮みする誤差円を描く
+        const accuracyGeoJSON = createGeoJSONCircle(
+          [longitude, latitude],
+          accuracy || 20,
+        );
+        const accuracySource = map.getSource(
+          "user-location-accuracy",
+        ) as maplibregl.GeoJSONSource;
+
+        if (accuracySource) {
+          accuracySource.setData(accuracyGeoJSON);
+        } else {
+          map.addSource("user-location-accuracy", {
+            type: "geojson",
+            data: accuracyGeoJSON,
+          });
+          map.addLayer({
+            id: "user-location-accuracy-fill",
+            type: "fill",
+            source: "user-location-accuracy",
+            paint: {
+              "fill-color": "#2563eb",
+              "fill-opacity": 0.15,
+            },
+          });
+          map.addLayer({
+            id: "user-location-accuracy-line",
+            type: "line",
+            source: "user-location-accuracy",
+            paint: {
+              "line-color": "#2563eb",
+              "line-width": 1,
+              "line-opacity": 0.3,
+            },
+          });
+        }
+
+        // 2. 中心の青丸マーカーを配置
+        if (currentLocationMarkerRef.current) {
+          currentLocationMarkerRef.current.setLngLat([longitude, latitude]);
+        } else {
+          const markerEl = document.createElement("div");
+          markerEl.className = "user-location-marker";
+          markerEl.innerHTML = `<div class="user-location-dot"></div>`;
+
+          currentLocationMarkerRef.current = new maplibregl.Marker({
+            element: markerEl,
+          })
+            .setLngLat([longitude, latitude])
+            .addTo(map);
+        }
+
+        const targetZoom = Math.max(map.getZoom(), 16);
+        const isMobile = window.innerWidth < 768;
+
+        map.flyTo({
+          center: [longitude, latitude],
+          zoom: targetZoom,
+          speed: 1.2,
+          essential: true,
+          padding:
+            isPanelOpenRef.current && isMobile
+              ? { top: 0, bottom: window.innerHeight * 0.55, left: 0, right: 0 }
+              : { top: 0, bottom: 0, left: 0, right: 0 },
+        });
+      },
+      (error) => {
+        isLocatingRef.current = false;
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            alert(
+              "位置情報の利用が許可されていません。\nブラウザの設定から位置情報の権限を許可してください。",
+            );
+            break;
+          case error.POSITION_UNAVAILABLE:
+            alert("位置情報を取得できませんでした。電波状況をご確認ください。");
+            break;
+          case error.TIMEOUT:
+            alert(
+              "位置情報の取得がタイムアウトしました。もう一度お試しください。",
+            );
+            break;
+          default:
+            alert("位置情報の取得中にエラーが発生しました。");
+            break;
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      },
+    );
+  }, []);
 
   // --- ルートライン描画 ---
   const drawRouteLine = useCallback(() => {
@@ -387,7 +525,6 @@ const MapContainer: React.FC<MapContainerProps> = ({
     });
   }, [data, selectedTrip]);
 
-  // ハンドラの最新版を参照する Ref（map 初期化時に安全に呼び出すため）
   const drawRouteLineRef = useRef(drawRouteLine);
   const updateStopMarkersRef = useRef(updateStopMarkers);
   const updateBusesRef = useRef(updateBuses);
@@ -417,7 +554,6 @@ const MapContainer: React.FC<MapContainerProps> = ({
     [],
   );
 
-  // ハンドラ refs を常に最新に
   useEffect(() => {
     drawRouteLineRef.current = drawRouteLine;
   }, [drawRouteLine]);
@@ -440,7 +576,6 @@ const MapContainer: React.FC<MapContainerProps> = ({
     onZoomChangeRef.current = onZoomChange;
   }, [onZoomChange]);
 
-  // イベントリスナは map 初期化時に登録し、必要に応じてこの useEffect で再登録する
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -503,7 +638,6 @@ const MapContainer: React.FC<MapContainerProps> = ({
     onBoundsChange,
   ]);
 
-  // マップ初期化
   useEffect(() => {
     const map = new maplibregl.Map({
       container: mapContainerRef.current!,
@@ -579,7 +713,6 @@ const MapContainer: React.FC<MapContainerProps> = ({
       isStyleLoadedRef.current = true;
       forceUpdate({});
 
-      // 矢印アイコン生成
       const width = 16,
         height = 16;
       const canvas = document.createElement("canvas");
@@ -598,7 +731,6 @@ const MapContainer: React.FC<MapContainerProps> = ({
       const imageData = ctx.getImageData(0, 0, width, height);
       map.addImage("arrow", imageData);
 
-      // 初期ロード時は最新の refs 経由で呼び出す
       try {
         updateStopMarkersRef.current();
       } catch {
@@ -614,7 +746,6 @@ const MapContainer: React.FC<MapContainerProps> = ({
       } catch {
         // noop
       }
-      // 初期ロード時に現在の bounds を親に通知して stops を取得させる
       try {
         const b = map.getBounds();
         if (b && typeof onBoundsChangeRef.current === "function") {
@@ -628,12 +759,8 @@ const MapContainer: React.FC<MapContainerProps> = ({
       } catch {
         // noop
       }
-
-      // MapLibre の組み込みアトリビューションコントロールを利用するため、
-      // カスタムの出典要素は追加しない。
     });
 
-    // バス更新の定期実行は refs 経由で行う（ハンドラが変わっても参照は最新）
     const busInterval = setInterval(() => {
       try {
         updateBusesRef.current();
@@ -647,12 +774,24 @@ const MapContainer: React.FC<MapContainerProps> = ({
       busRequestIdRef.current += 1;
       Object.values(busMarkersRef.current).forEach(disposeBusMarker);
       busMarkersRef.current = {};
+
+      if (currentLocationMarkerRef.current) {
+        currentLocationMarkerRef.current.remove();
+        currentLocationMarkerRef.current = null;
+      }
+
+      if (map.getLayer("user-location-accuracy-line"))
+        map.removeLayer("user-location-accuracy-line");
+      if (map.getLayer("user-location-accuracy-fill"))
+        map.removeLayer("user-location-accuracy-fill");
+      if (map.getSource("user-location-accuracy"))
+        map.removeSource("user-location-accuracy");
+
       map.remove();
       mapRef.current = null;
     };
   }, []);
 
-  // Page Visibility API: タブが非表示の間は更新を一時停止
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
@@ -669,9 +808,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
     };
   }, []);
 
-  // ページ可視状態のみで更新停止を制御（不活動タイマーは削除）
   useEffect(() => {
-    // Page Visibility API だけを使用し、不活動タイマーは削除
     return () => {
       if (inactivityTimerRef.current) {
         clearTimeout(inactivityTimerRef.current);
@@ -679,14 +816,12 @@ const MapContainer: React.FC<MapContainerProps> = ({
     };
   }, []);
 
-  // レイヤー切り替え同期
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !isStyleLoadedRef.current) return;
     applyLayerVisibility(map, activeLayer);
   }, [activeLayer, applyLayerVisibility]);
 
-  // 便選択時の描画・マーカー更新同期
   useEffect(() => {
     if (!isStyleLoadedRef.current) return;
     drawRouteLine();
@@ -697,6 +832,25 @@ const MapContainer: React.FC<MapContainerProps> = ({
   return (
     <div className="map-container-wrapper">
       <div id="map" ref={mapContainerRef}></div>
+
+      {/* 現在地ボタン */}
+      <div
+        id="location-control-container"
+        className={isPanelOpen ? "panel-open" : ""}
+      >
+        <button
+          id="location-btn"
+          type="button"
+          aria-label="現在地に移動"
+          title="現在地に移動"
+          onClick={handleLocateUser}
+        >
+          <span className="material-icons-outlined" aria-hidden>
+            my_location
+          </span>
+        </button>
+      </div>
+
       <div
         className={`map-attribution ${isPanelOpen ? "panel-open" : ""}`}
         role="note"

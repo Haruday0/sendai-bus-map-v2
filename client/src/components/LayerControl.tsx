@@ -32,9 +32,12 @@ const LayerControl: React.FC<LayerControlProps> = ({
         aria-label="地図レイヤー切り替え"
         aria-expanded={layerMenuOpen}
         aria-controls="layer-menu"
-        onClick={(e) => {
+        onPointerDown={(e) => {
           e.stopPropagation();
           setLayerMenuOpen((v) => !v);
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
         }}
         title="地図レイヤー切り替え"
       >
