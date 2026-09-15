@@ -236,6 +236,29 @@
   height: 22px;
 }
 
+#map.compact-bus-labels .bus-marker-container .bus-label {
+  display: none;
+}
+#map.compact-bus-labels .bus-marker-container .bus-icon-wrapper {
+  width: 22px;
+  height: 22px;
+  transition: none;
+}
+#map.compact-bus-labels .bus-marker-container .bus-icon-wrapper .material-icons,
+#map.compact-bus-labels
+  .bus-marker-container
+  .bus-icon-wrapper
+  .material-icons-outlined {
+  font-size: 20px;
+  transition: none;
+}
+
+#map.is-zooming .bus-icon-wrapper,
+#map.is-zooming .bus-icon-wrapper .material-icons,
+#map.is-zooming .bus-icon-wrapper .material-icons-outlined {
+  transition: none;
+}
+
 .bus-icon-wrapper .material-icons,
 .bus-icon-wrapper .material-icons-outlined {
   transition: font-size 0.15s ease;

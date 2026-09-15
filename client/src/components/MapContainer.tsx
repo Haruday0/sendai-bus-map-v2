@@ -110,6 +110,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   const stopMarkersRef = useRef<maplibregl.Marker[]>([]);
   const busMarkersRef = useRef<Record<string, maplibregl.Marker>>({});
   const busRequestIdRef = useRef(0);
+  const compactDisplayRef = useRef<boolean | null>(null);
 
   // 地図の準備完了状態を管理
   const isStyleLoadedRef = useRef(false);
@@ -322,9 +323,9 @@ const MapContainer: React.FC<MapContainerProps> = ({
     if (!map) return;
 
     const isCompact = map.getZoom() < 15.0;
-    Object.values(busMarkersRef.current).forEach((marker) => {
-      marker.getElement().classList.toggle("compact", isCompact);
-    });
+    if (compactDisplayRef.current === isCompact) return;
+    compactDisplayRef.current = isCompact;
+    map.getContainer().classList.toggle("compact-bus-labels", isCompact);
   }, []);
 
   const updateZoomDependentDisplay = useCallback(() => {
@@ -445,6 +446,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
     if (!map) return;
 
     const moveendHandler = () => {
+      map.getContainer().classList.remove("is-zooming");
       onZoomChange(map.getZoom());
       updateZoomDependentDisplay();
 
@@ -463,10 +465,12 @@ const MapContainer: React.FC<MapContainerProps> = ({
       }
     };
 
-    const movestartHandler = () => onMoveStart();
+    const movestartHandler = () => {
+      map.getContainer().classList.add("is-zooming");
+      onMoveStart();
+    };
 
     const zoomHandler = () => {
-      onZoomChange(map.getZoom());
       updateBusMarkerDisplay();
     };
 
