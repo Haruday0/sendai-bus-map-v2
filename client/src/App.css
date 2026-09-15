@@ -973,8 +973,13 @@
   border-radius: var(--radius-lg);
   box-shadow: var(--glass-shadow-lg);
   border: 1px solid var(--glass-border);
-  display: none;
   width: 200px;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateZ(0);
+  contain: layout paint;
+  will-change: opacity;
 }
 
 @keyframes menuIn {
@@ -989,7 +994,9 @@
 }
 
 #layer-menu.show {
-  display: block;
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .layer-item {
