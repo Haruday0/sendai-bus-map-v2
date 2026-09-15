@@ -621,7 +621,7 @@
 
 .item-row.past {
   color: #888888;
-  background: var(--color-neutral-0);
+  background: rgba(255, 255, 255, 0.22);
   font-weight: 700;
 }
 
@@ -667,7 +667,7 @@
 }
 
 .item-row.past:hover {
-  background-color: var(--color-neutral-100);
+  background-color: rgba(255, 255, 255, 0.4);
 }
 .item-row.highlight:hover {
   background-color: hsl(48, 100%, 92%);
@@ -954,7 +954,7 @@
 #layer-btn:hover {
   background: #f8f9fa;
   transform: scale(1.06);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 12px 28px rgba(22, 49, 67, 0.2);
 }
 #layer-btn:active {
   background: #f1f3f4;
@@ -979,7 +979,7 @@
   pointer-events: none;
   transform: translateZ(0);
   contain: layout paint;
-  will-change: opacity;
+  will-change: opacity, transform, backdrop-filter;
 }
 
 @keyframes menuIn {
@@ -1393,5 +1393,85 @@
     visibility: hidden;
     pointer-events: none;
     transform: translateY(4px);
+  }
+}
+
+/* ===================== GLASS SURFACE REFINEMENTS ===================== */
+/* 地図を背景に感じられる透明度を保ちつつ、文字の可読性は既存の配色で維持する。 */
+#bottom-panel {
+  background: var(--glass-bg-strong);
+}
+
+.panel-header {
+  border-bottom-color: rgba(255, 255, 255, 0.48);
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.44),
+    rgba(255, 255, 255, 0.18)
+  );
+}
+
+.panel-content {
+  background: rgba(255, 255, 255, 0.38);
+}
+
+.close-btn {
+  background: rgba(255, 255, 255, 0.46);
+  border: 1px solid rgba(255, 255, 255, 0.54);
+}
+
+.close-btn:hover {
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.close-btn:active {
+  background: rgba(255, 255, 255, 0.62);
+}
+
+#layer-btn {
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+  backdrop-filter: var(--backdrop-blur);
+}
+
+#layer-btn:hover {
+  background: rgba(255, 255, 255, 0.86);
+}
+
+#layer-btn:active {
+  background: rgba(255, 255, 255, 0.64);
+}
+
+.search-item {
+  border-bottom-color: rgba(255, 255, 255, 0.38);
+}
+
+.search-item:hover {
+  background: rgba(219, 234, 254, 0.58);
+}
+
+.results-header {
+  background: rgba(255, 255, 255, 0.25);
+  border-bottom-color: rgba(255, 255, 255, 0.42);
+}
+
+/* バスの状態を示す小さな面も、地図と同じガラスの質感で統一する。 */
+.occupancy-info,
+.speed-info {
+  background: rgba(255, 255, 255, 0.42);
+  border-color: rgba(255, 255, 255, 0.64);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.58),
+    0 2px 8px rgba(22, 49, 67, 0.08);
+  -webkit-backdrop-filter: blur(10px) saturate(145%);
+  backdrop-filter: blur(10px) saturate(145%);
+}
+
+/* PCではパネルを検索欄の影より前面に置き、影がパネル上へ落ちないようにする。 */
+@media (min-width: 768px) {
+  #bottom-panel {
+    z-index: 8000;
   }
 }

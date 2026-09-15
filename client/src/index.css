@@ -34,15 +34,18 @@
   --color-delay: hsl(28, 100%, 54%);
 
   /* --- Glass / Surface --- */
-  --glass-bg: rgba(255, 255, 255, 0.92);
-  --glass-bg-strong: rgba(255, 255, 255, 0.97);
-  --glass-border: rgba(255, 255, 255, 0.6);
-  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+  --glass-bg: rgba(255, 255, 255, 0.58);
+  --glass-bg-strong: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.72);
+  --glass-shadow:
+    0 10px 30px rgba(22, 49, 67, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.64);
   --glass-shadow-lg:
-    0 20px 60px rgba(0, 0, 0, 0.18), 0 4px 16px rgba(0, 0, 0, 0.08);
+    0 20px 54px rgba(22, 49, 67, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.68);
 
   /* --- Backdrop --- */
-  --backdrop-blur: blur(16px) saturate(180%);
+  --backdrop-blur: blur(20px) saturate(155%);
 
   /* --- Radius --- */
   --radius-sm: 8px;
