@@ -490,6 +490,9 @@ function App() {
                   max={86340} // 23:59
                   step={60} // 1分刻みで完全自由
                   value={simSeconds}
+                  onInput={(e) =>
+                    setSimSeconds(Number((e.target as HTMLInputElement).value))
+                  }
                   onChange={(e) => setSimSeconds(Number(e.target.value))}
                   className="debug-sim-slider"
                 />

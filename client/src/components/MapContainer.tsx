@@ -147,6 +147,11 @@ const MapContainer: React.FC<MapContainerProps> = ({
   const currentLocationMarkerRef = useRef<maplibregl.Marker | null>(null);
   const isLocatingRef = useRef(false);
 
+  const simTimeRef = useRef(simTime);
+  useEffect(() => {
+    simTimeRef.current = simTime;
+  }, [simTime]);
+
   // 地図の準備完了状態を管理
   const isStyleLoadedRef = useRef(false);
   const [, forceUpdate] = useState({});
@@ -259,7 +264,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
         maxLat,
         minLng,
         maxLng,
-        simTime,
+        simTimeRef.current,
       );
       if (requestId !== busRequestIdRef.current) return;
 
@@ -348,7 +353,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
     } catch (error) {
       console.error("Failed to fetch bus positions:", error);
     }
-  }, [selectedTrip, onBusClick, isUpdatesPaused, simTime]);
+  }, [selectedTrip, onBusClick, isUpdatesPaused]);
 
   const updateBusMarkerDisplay = useCallback(() => {
     const map = mapRef.current;
@@ -826,15 +831,15 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
   useEffect(() => {
     if (!isStyleLoadedRef.current) return;
-    drawRouteLine();
-    updateStopMarkers();
-    updateBuses();
-  }, [drawRouteLine, updateStopMarkers, updateBuses]);
+    drawRouteLineRef.current();
+    updateStopMarkersRef.current();
+    updateBusesRef.current();
+  }, [selectedTrip]);
 
   useEffect(() => {
     if (!isStyleLoadedRef.current) return;
-    updateBuses();
-  }, [simTime, updateBuses]);
+    updateBusesRef.current();
+  }, [simTime]);
 
   return (
     <div className="map-container-wrapper">
