@@ -77,8 +77,9 @@ export async function fetchBusPositions(
   maxLat?: number,
   minLng?: number,
   maxLng?: number,
+  simTime?: string, // 💡 追加
 ): Promise<BusPosition[]> {
-  let url = `${API_BASE}/buses`;
+  const params = new URLSearchParams();
 
   if (
     minLat !== undefined &&
@@ -86,15 +87,24 @@ export async function fetchBusPositions(
     minLng !== undefined &&
     maxLng !== undefined
   ) {
-    url += `?minLat=${minLat}&maxLat=${maxLat}&minLng=${minLng}&maxLng=${maxLng}`;
+    params.set("minLat", minLat.toString());
+    params.set("maxLat", maxLat.toString());
+    params.set("minLng", minLng.toString());
+    params.set("maxLng", maxLng.toString());
   }
+
+  if (simTime) {
+    params.set("simTime", simTime); // 💡 追加
+  }
+
+  const queryString = params.toString();
+  const url = `${API_BASE}/buses${queryString ? `?${queryString}` : ""}`;
 
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`buses fetch failed (${res.status})`);
   }
   const data = await res.json();
-  // { count: number, buses: BusPosition[], timestamp: number }
   return data.buses as BusPosition[];
 }
 

@@ -71,6 +71,17 @@ function App() {
   );
   const [debugModeUrl, setDebugModeUrl] = useState(() => buildDebugModeUrl());
 
+  const [simSeconds, setSimSeconds] = useState(8 * 3600 + 30 * 60);
+  const [enableSimTime, setEnableSimTime] = useState(false);
+
+  const formatSimTime = (totalSec: number) => {
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
+  };
+  const activeSimTimeString =
+    isDebugMode && enableSimTime ? formatSimTime(simSeconds) : undefined;
+
   // 最新の data.stops と zoom を安全に参照するための ref（無限ループ・重さ防止）
   const dataStopsRef = useRef(data.stops);
   const zoomRef = useRef(zoom);
@@ -457,6 +468,34 @@ function App() {
             <span className="debug-label">Zoom</span>
             <span className="debug-value">{zoom.toFixed(2)}</span>
           </div>
+
+          {/* 💡 24時間時刻シミュレーター */}
+          <div className="debug-sim-control">
+            <label className="debug-sim-toggle">
+              <input
+                type="checkbox"
+                checked={enableSimTime}
+                onChange={(e) => setEnableSimTime(e.target.checked)}
+              />
+              時刻シミュレーション
+            </label>
+            {enableSimTime && (
+              <div className="debug-sim-slider-row">
+                <span className="debug-sim-time-display">
+                  {formatSimTime(simSeconds).substring(0, 5)}
+                </span>
+                <input
+                  type="range"
+                  min={0} // 00:00
+                  max={86340} // 23:59
+                  step={60} // 1分刻みで完全自由
+                  value={simSeconds}
+                  onChange={(e) => setSimSeconds(Number(e.target.value))}
+                  className="debug-sim-slider"
+                />
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -502,6 +541,7 @@ function App() {
         activeLayer={activeLayer}
         isPanelOpen={isPanelOpen}
         selectedTrip={selectedTrip}
+        simTime={activeSimTimeString}
         onStopClick={handleStopClick}
         onBusClick={handleBusClick}
         onMapClick={handleClosePanel}

@@ -708,6 +708,46 @@ func calculateAllBusPositions() []BusPosition {
 	return result
 }
 
+// 💡 指定された秒数（0:00〜23:59の秒数）で運行しているバスをすべて逆算する関数
+func calculateAllBusPositionsAt(nowSec int) []BusPosition {
+	result := []BusPosition{}
+
+	for routeID, trips := range timetablesCache {
+		for tripID, trip := range trips {
+			if !isServiceRunningToday(trip.ServiceID) {
+				continue
+			}
+			stops := trip.Stops
+			if len(stops) < 2 {
+				continue
+			}
+			startSec := timeToSec(stops[0].Time)
+			endSec := timeToSec(stops[len(stops)-1].Time)
+
+			if nowSec >= startSec && nowSec <= endSec {
+				stopIDs := make([]string, len(stops))
+				for i, stop := range stops {
+					stopIDs[i] = stop.StopID
+				}
+				patternKey := strings.Join(stopIDs, "|")
+				pos := calculateBusPosition(trip, nowSec, patternKey)
+				if pos != nil {
+					routeInfo := routesCache[routeID]
+					result = append(result, BusPosition{
+						TripID:    tripID,
+						RouteID:   routeID,
+						RouteName: routeInfo.ShortName,
+						Headsign:  trip.Headsign,
+						Position:  pos,
+						Color:     routeInfo.Color,
+					})
+				}
+			}
+		}
+	}
+	return result
+}
+
 // リアルタイム遅延情報（TripUpdate）を取得してマップを生成
 func fetchTripUpdatesFromODPT() (map[string]*TripRealtimeUpdate, error) {
 	token := getODPTAccessToken()
@@ -895,11 +935,23 @@ func main() {
 			return
 		}
 
-		buses, err := getRealtimeBusPositions()
+		// 💡 デバッグ用シミュレーション時刻（例: simTime=08:30:00）の判定
+		simTimeQuery := strings.TrimSpace(c.Query("simTime"))
+		var buses []BusPosition
 		realtimeErrStr := ""
-		if err != nil {
-			realtimeErrStr = err.Error()
-			buses = calculateAllBusPositions()
+
+		if simTimeQuery != "" {
+			// simTimeが指定された場合は、時刻表ベースで計算（遅延なし）
+			simSec := timeToSec(simTimeQuery)
+			buses = calculateAllBusPositionsAt(simSec)
+		} else {
+			// 通常時はODPTリアルタイムGPSを取得
+			var err error
+			buses, err = getRealtimeBusPositions()
+			if err != nil {
+				realtimeErrStr = err.Error()
+				buses = calculateAllBusPositions()
+			}
 		}
 
 		// timetables に存在しない ADDED 便などで headsign が空になる場合、

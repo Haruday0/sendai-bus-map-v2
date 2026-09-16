@@ -50,6 +50,7 @@ interface MapContainerProps {
   activeLayer: "pale" | "ortho" | "osm";
   isPanelOpen?: boolean;
   selectedTrip: PanelTrip | null;
+  simTime?: string;
   onStopClick: (id: string, zoom?: number) => void;
   onBusClick: (
     tripId: string,
@@ -126,6 +127,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   activeLayer,
   isPanelOpen = false,
   selectedTrip,
+  simTime,
   onStopClick,
   onBusClick,
   onMapClick,
@@ -252,7 +254,13 @@ const MapContainer: React.FC<MapContainerProps> = ({
       const minLng = bounds.getWest();
       const maxLng = bounds.getEast();
 
-      const buses = await fetchBusPositions(minLat, maxLat, minLng, maxLng);
+      const buses = await fetchBusPositions(
+        minLat,
+        maxLat,
+        minLng,
+        maxLng,
+        simTime,
+      );
       if (requestId !== busRequestIdRef.current) return;
 
       try {
@@ -340,7 +348,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
     } catch (error) {
       console.error("Failed to fetch bus positions:", error);
     }
-  }, [selectedTrip, onBusClick, isUpdatesPaused]);
+  }, [selectedTrip, onBusClick, isUpdatesPaused, simTime]);
 
   const updateBusMarkerDisplay = useCallback(() => {
     const map = mapRef.current;
@@ -605,10 +613,6 @@ const MapContainer: React.FC<MapContainerProps> = ({
       onMoveStart();
     };
 
-    const zoomHandler = () => {
-      updateBusMarkerDisplay();
-    };
-
     const clickHandler = (e: maplibregl.MapMouseEvent) => {
       const el = (e.originalEvent.target as HTMLElement) || null;
       if (el && el.className && el.className.includes("maplibregl-canvas")) {
@@ -618,13 +622,11 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
     map.on("moveend", moveendHandler);
     map.on("movestart", movestartHandler);
-    map.on("zoom", zoomHandler);
     map.on("click", clickHandler);
 
     return () => {
       map.off("moveend", moveendHandler);
       map.off("movestart", movestartHandler);
-      map.off("zoom", zoomHandler);
       map.off("click", clickHandler);
     };
   }, [
@@ -828,6 +830,11 @@ const MapContainer: React.FC<MapContainerProps> = ({
     updateStopMarkers();
     updateBuses();
   }, [drawRouteLine, updateStopMarkers, updateBuses]);
+
+  useEffect(() => {
+    if (!isStyleLoadedRef.current) return;
+    updateBuses();
+  }, [simTime, updateBuses]);
 
   return (
     <div className="map-container-wrapper">
