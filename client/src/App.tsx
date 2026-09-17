@@ -544,6 +544,7 @@ function App() {
         activeLayer={activeLayer}
         isPanelOpen={isPanelOpen}
         selectedTrip={selectedTrip}
+        tripDetail={tripDetail}
         simTime={activeSimTimeString}
         onStopClick={handleStopClick}
         onBusClick={handleBusClick}

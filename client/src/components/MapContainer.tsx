@@ -3,7 +3,12 @@ import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { createRoot, type Root } from "react-dom/client";
 // using Material Icons font for markers
-import type { AppData, PanelTrip, BusPosition } from "../types";
+import type {
+  AppData,
+  PanelTrip,
+  BusPosition,
+  TripDetailResponse,
+} from "../types";
 import { fetchBusPositions } from "../dataLoader";
 import { formatHeadsign } from "../utils";
 
@@ -50,6 +55,7 @@ interface MapContainerProps {
   activeLayer: "pale" | "ortho" | "osm";
   isPanelOpen?: boolean;
   selectedTrip: PanelTrip | null;
+  tripDetail?: TripDetailResponse | null;
   simTime?: string;
   onStopClick: (id: string, zoom?: number) => void;
   onBusClick: (
@@ -127,6 +133,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   activeLayer,
   isPanelOpen = false,
   selectedTrip,
+  tripDetail,
   simTime,
   onStopClick,
   onBusClick,
@@ -499,8 +506,9 @@ const MapContainer: React.FC<MapContainerProps> = ({
     if (!trip) return;
 
     const patternKey = trip.stops.map((s) => s.stop_id).join("|");
-    const shape = data.shapes[patternKey];
-    if (!shape) return;
+    const shapeCoords =
+      tripDetail?.shape?.coordinates || data.shapes[patternKey]?.coordinates;
+    if (!shapeCoords || shapeCoords.length === 0) return;
 
     const routeInfo = data.routes[selectedTrip.routeId];
 
@@ -509,7 +517,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
       data: {
         type: "Feature",
         properties: {},
-        geometry: { type: "LineString", coordinates: shape.coordinates },
+        geometry: { type: "LineString", coordinates: shapeCoords },
       },
     });
     map.addLayer({
@@ -536,7 +544,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
         "icon-ignore-placement": true,
       },
     });
-  }, [data, selectedTrip]);
+  }, [data, selectedTrip, tripDetail]);
 
   const drawRouteLineRef = useRef(drawRouteLine);
   const updateStopMarkersRef = useRef(updateStopMarkers);
@@ -834,7 +842,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
     drawRouteLineRef.current();
     updateStopMarkersRef.current();
     updateBusesRef.current();
-  }, [selectedTrip]);
+  }, [selectedTrip, tripDetail]);
 
   useEffect(() => {
     if (!isStyleLoadedRef.current) return;
