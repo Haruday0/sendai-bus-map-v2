@@ -153,6 +153,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   // 現在地マーカーと連打防止用フラグ
   const currentLocationMarkerRef = useRef<maplibregl.Marker | null>(null);
   const isLocatingRef = useRef(false);
+  const [hasLocated, setHasLocated] = useState(false);
 
   const simTimeRef = useRef(simTime);
   useEffect(() => {
@@ -393,7 +394,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
     navigator.geolocation.getCurrentPosition(
       (position) => {
         isLocatingRef.current = false;
-        // 💡 accuracy（GPSの誤差メートル）も一緒に受け取る
+        setHasLocated(true);
         const { longitude, latitude, accuracy } = position.coords;
 
         // 1. 地図の縮尺に合わせて伸び縮みする誤差円を描く
@@ -464,6 +465,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
       },
       (error) => {
         isLocatingRef.current = false;
+        setHasLocated(false);
         switch (error.code) {
           case error.PERMISSION_DENIED:
             alert(
@@ -864,6 +866,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
           aria-label="現在地に移動"
           title="現在地に移動"
           onClick={handleLocateUser}
+          className={hasLocated ? "active" : ""}
         >
           <span className="material-icons-outlined" aria-hidden>
             my_location
