@@ -32,56 +32,63 @@ const LayerControl: React.FC<LayerControlProps> = ({
         aria-label="地図レイヤー切り替え"
         aria-expanded={layerMenuOpen}
         aria-controls="layer-menu"
-        onPointerDown={(e) => {
-          e.stopPropagation();
-          setLayerMenuOpen((v) => !v);
-        }}
-        onClick={(e) => {
-          e.stopPropagation();
-        }}
+        onClick={() => setLayerMenuOpen((v) => !v)}
         title="地図レイヤー切り替え"
       >
         <span className="material-icons-outlined" aria-hidden>
           layers
         </span>
       </button>
-      <div id="layer-menu" className={layerMenuOpen ? "show" : ""}>
-        <div className="layer-group-title">OpenStreetMap</div>
-        <div
-          className={`layer-item ${activeLayer === "osm" ? "active" : ""}`}
-          onClick={() => onLayerChange("osm")}
-        >
-          <img
-            className="layer-item-icon"
-            src="/osm_logo.svg"
-            alt=""
-            aria-hidden
-            loading="eager"
-            decoding="async"
-          />
-          OpenStreetMap
-        </div>
 
-        <div className="layer-group-title">地理院タイル</div>
-        <div
-          className={`layer-item ${activeLayer === "pale" ? "active" : ""}`}
-          onClick={() => onLayerChange("pale")}
-        >
-          <span className="material-icons-outlined" aria-hidden>
-            map
-          </span>
-          淡色地図
+      {/* 💡 開いた瞬間だけ出現して0秒でアニメーションする最速仕様 */}
+      {layerMenuOpen && (
+        <div id="layer-menu">
+          <div className="layer-group-title">OpenStreetMap</div>
+          <div
+            className={`layer-item ${activeLayer === "osm" ? "active" : ""}`}
+            onClick={() => {
+              onLayerChange("osm");
+              setLayerMenuOpen(false);
+            }}
+          >
+            <img
+              className="layer-item-icon"
+              src="/osm_logo.svg"
+              alt=""
+              aria-hidden
+              loading="eager"
+              decoding="async"
+            />
+            OpenStreetMap
+          </div>
+
+          <div className="layer-group-title">地理院タイル</div>
+          <div
+            className={`layer-item ${activeLayer === "pale" ? "active" : ""}`}
+            onClick={() => {
+              onLayerChange("pale");
+              setLayerMenuOpen(false);
+            }}
+          >
+            <span className="material-icons-outlined" aria-hidden>
+              map
+            </span>
+            淡色地図
+          </div>
+          <div
+            className={`layer-item ${activeLayer === "ortho" ? "active" : ""}`}
+            onClick={() => {
+              onLayerChange("ortho");
+              setLayerMenuOpen(false);
+            }}
+          >
+            <span className="material-icons-outlined" aria-hidden>
+              photo_camera
+            </span>
+            航空写真
+          </div>
         </div>
-        <div
-          className={`layer-item ${activeLayer === "ortho" ? "active" : ""}`}
-          onClick={() => onLayerChange("ortho")}
-        >
-          <span className="material-icons-outlined" aria-hidden>
-            photo_camera
-          </span>
-          航空写真
-        </div>
-      </div>
+      )}
     </div>
   );
 };

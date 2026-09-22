@@ -1002,28 +1002,19 @@
   box-shadow: var(--glass-shadow-lg);
   border: 1px solid var(--glass-border);
   width: 200px;
-  visibility: hidden;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(-8px) scale(0.96);
-  transition:
-    opacity 0.12s ease-out,
-    transform 0.12s ease-out,
-    visibility 0.12s ease-out;
+  z-index: 9100;
+  animation: layerMenuSmoothIn 0.12s ease-out;
 }
 
-#layer-menu.show {
-  visibility: visible;
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateY(0) scale(1);
-}
-
-#layer-menu.show {
-  visibility: visible;
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateY(0) scale(1);
+@keyframes layerMenuSmoothIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .layer-item {
@@ -1368,11 +1359,15 @@
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.02em;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
   transition:
     opacity var(--transition-normal),
     visibility var(--transition-normal),
     transform var(--transition-normal),
-    box-shadow var(--transition-normal);
+    box-shadow var(--transition-normal),
+    background var(--transition-fast);
 }
 
 #github-footer-link:hover {
