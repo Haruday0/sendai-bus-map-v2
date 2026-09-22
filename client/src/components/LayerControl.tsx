@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from "react";
-// use Material Icons font for UI icons
+import React, { useState, useEffect, useRef } from "react";
 
 interface LayerControlProps {
   activeLayer: "pale" | "ortho" | "osm";
@@ -10,85 +9,91 @@ const LayerControl: React.FC<LayerControlProps> = ({
   activeLayer,
   onLayerChange,
 }) => {
-  const [layerMenuOpen, setLayerMenuOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  // 外クリックでメニューを閉じる
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest("#layer-control-container")) {
-        setLayerMenuOpen(false);
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
+        setIsOpen(false);
       }
     };
-    document.addEventListener("click", handler);
-    return () => document.removeEventListener("click", handler);
+    document.addEventListener("click", handleOutsideClick);
+    return () => document.removeEventListener("click", handleOutsideClick);
   }, []);
 
   return (
-    <div id="layer-control-container">
+    <div id="layer-control-container" ref={containerRef}>
+      {/* レイヤー切り替えボタン */}
       <button
         id="layer-btn"
         type="button"
         aria-label="地図レイヤー切り替え"
-        aria-expanded={layerMenuOpen}
-        aria-controls="layer-menu"
-        onClick={() => setLayerMenuOpen((v) => !v)}
         title="地図レイヤー切り替え"
+        onClick={() => setIsOpen((prev) => !prev)}
       >
         <span className="material-icons-outlined" aria-hidden>
           layers
         </span>
       </button>
 
-      {/* 💡 開いた瞬間だけ出現して0秒でアニメーションする最速仕様 */}
-      {layerMenuOpen && (
-        <div id="layer-menu">
-          <div className="layer-group-title">OpenStreetMap</div>
-          <div
-            className={`layer-item ${activeLayer === "osm" ? "active" : ""}`}
-            onClick={() => {
-              onLayerChange("osm");
-              setLayerMenuOpen(false);
-            }}
-          >
-            <img
-              className="layer-item-icon"
-              src="/osm_logo.svg"
-              alt=""
-              aria-hidden
-              loading="eager"
-              decoding="async"
-            />
-            OpenStreetMap
-          </div>
+      <div id="layer-menu" className={isOpen ? "open" : ""}>
+        <div className="layer-group-title">OpenStreetMap</div>
+        <button
+          type="button"
+          className={`layer-item ${activeLayer === "osm" ? "active" : ""}`}
+          onClick={() => {
+            onLayerChange("osm");
+            setIsOpen(false);
+          }}
+        >
+          <img
+            className="layer-item-icon"
+            src="/osm_logo.svg"
+            alt="OpenStreetMap"
+            aria-hidden="true"
+          />
+          <span>OpenStreetMap</span>
+        </button>
 
-          <div className="layer-group-title">地理院タイル</div>
-          <div
-            className={`layer-item ${activeLayer === "pale" ? "active" : ""}`}
-            onClick={() => {
-              onLayerChange("pale");
-              setLayerMenuOpen(false);
-            }}
+        <div className="layer-group-title">地理院タイル</div>
+        <button
+          type="button"
+          className={`layer-item ${activeLayer === "pale" ? "active" : ""}`}
+          onClick={() => {
+            onLayerChange("pale");
+            setIsOpen(false);
+          }}
+        >
+          <span
+            className="material-icons-outlined layer-item-icon-font"
+            aria-hidden
           >
-            <span className="material-icons-outlined" aria-hidden>
-              map
-            </span>
-            淡色地図
-          </div>
-          <div
-            className={`layer-item ${activeLayer === "ortho" ? "active" : ""}`}
-            onClick={() => {
-              onLayerChange("ortho");
-              setLayerMenuOpen(false);
-            }}
+            map
+          </span>
+          <span>淡色地図</span>
+        </button>
+
+        <button
+          type="button"
+          className={`layer-item ${activeLayer === "ortho" ? "active" : ""}`}
+          onClick={() => {
+            onLayerChange("ortho");
+            setIsOpen(false);
+          }}
+        >
+          <span
+            className="material-icons-outlined layer-item-icon-font"
+            aria-hidden
           >
-            <span className="material-icons-outlined" aria-hidden>
-              photo_camera
-            </span>
-            航空写真
-          </div>
-        </div>
-      )}
+            photo_camera
+          </span>
+          <span>航空写真</span>
+        </button>
+      </div>
     </div>
   );
 };
