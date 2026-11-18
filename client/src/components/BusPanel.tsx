@@ -633,7 +633,7 @@ const BusPanel: React.FC<BusPanelProps> = ({
                         const routeNum = routeObj?.short_name || bus.route_id;
                         const badgeColor = routeObj?.color
                           ? `#${routeObj.color.replace(/^#/, "")}`
-                          : "#00703c";
+                          : "#a3d742";
                         return (
                           <span
                             className="route-badge"

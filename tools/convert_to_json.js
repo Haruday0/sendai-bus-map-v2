@@ -69,9 +69,12 @@ async function start() {
 
   const routesJson = {};
   routes.forEach((r) => {
+    const rawColor = (r.route_color || "").trim();
+    const color =
+      rawColor && rawColor !== "000000" ? rawColor : "A3D742";
     routesJson[r.route_id] = {
       short_name: r.route_short_name,
-      color: r.route_color || "00703c",
+      color,
       office_id: r.jp_office_id,
     };
   });

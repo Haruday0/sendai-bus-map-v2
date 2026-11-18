@@ -44,5 +44,13 @@ export default defineConfig({
   },
   server: {
     allowedHosts: true,
+    proxy: {
+      "/api": {
+        target:
+          process.env.VITE_PROXY_TARGET ||
+          "https://bus-map-bzd9hhfedye5crcq.japaneast-01.azurewebsites.net",
+        changeOrigin: true,
+      },
+    },
   },
 });

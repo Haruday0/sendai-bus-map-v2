@@ -527,7 +527,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
       type: "line",
       source: "route",
       paint: {
-        "line-color": "#" + (routeInfo?.color || "00703c"),
+        "line-color": "#" + (routeInfo?.color || "A3D742"),
         "line-width": 8,
         "line-opacity": 0.6,
       },

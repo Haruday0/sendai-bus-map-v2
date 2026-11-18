@@ -214,12 +214,16 @@ func loadRealtimeCacheTTL() {
 
 func routeMeta(routeID string) (string, string) {
 	if r, ok := routesCache[routeID]; ok {
-		if r.ShortName != "" {
-			return r.ShortName, r.Color
+		color := r.Color
+		if color == "" || color == "000000" {
+			color = "A3D742"
 		}
-		return routeID, r.Color
+		if r.ShortName != "" {
+			return r.ShortName, color
+		}
+		return routeID, color
 	}
-	return routeID, "00703c"
+	return routeID, "A3D742"
 }
 
 func headsignByTrip(routeID, tripID string) string {
