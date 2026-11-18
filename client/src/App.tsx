@@ -15,6 +15,7 @@ import {
   fetchTripDetails,
   fetchStopTimetable,
 } from "./dataLoader";
+import { getPanelMapPadding } from "./utils";
 import type {
   AppData,
   PanelTrip,
@@ -319,11 +320,12 @@ function App() {
       const map = mapRef.current;
       if (!map) return;
 
-      // 検索から選択した場合は常に集約表示（ズーム15）にする
+      // 検索から選択した場合は常に集約表示（ズーム15）＋パネル余白を考慮して移動する
       map.flyTo({
         center: [lng, lat],
         zoom: 15,
         essential: true,
+        padding: getPanelMapPadding(true),
       });
 
       setZoom(15);
@@ -410,18 +412,14 @@ function App() {
     setIsSearching(false);
   }, []);
 
-  // 💡 修正1: スマホ下部余白を 55% に調整
   const handleFlyToStop = useCallback((lng: number, lat: number) => {
     const map = mapRef.current;
     if (!map) return;
-    const isMobile = window.innerWidth < 768;
     map.flyTo({
       center: [lng, lat],
       zoom: 17,
       speed: 1.2,
-      padding: isMobile
-        ? { top: 0, bottom: window.innerHeight * 0.55, left: 0, right: 0 }
-        : { top: 0, bottom: 0, left: 400, right: 0 },
+      padding: getPanelMapPadding(true),
     });
     setZoom(17);
   }, []);

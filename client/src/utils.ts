@@ -129,3 +129,48 @@ export function removeFromSearchHistory(stopId: string): void {
   history = history.filter((id) => id !== stopId);
   localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
 }
+
+export interface MapPadding {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
+
+export const ZERO_MAP_PADDING: MapPadding = {
+  top: 0,
+  bottom: 0,
+  left: 0,
+  right: 0,
+};
+
+/**
+ * パネル表示時に「パネルを除いた地図領域の中央」へ収めるための MapLibre padding を返す
+ */
+export function getPanelMapPadding(isPanelOpen = true): MapPadding {
+  if (!isPanelOpen) return ZERO_MAP_PADDING;
+
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+
+  if (width < 768) {
+    // モバイル: 上部に検索バー(約58px)、下部にパネル(height: 60% + bottom: 20px)
+    const top = 64;
+    const desiredBottom = Math.round(height * 0.6 + 20);
+    const maxBottom = Math.max(0, Math.round(height * 0.82) - top);
+    return {
+      top,
+      bottom: Math.min(desiredBottom, maxBottom),
+      left: 0,
+      right: 0,
+    };
+  }
+
+  // PC: 左側にパネル(left: 20px + max-width: 400px = 420px)
+  return {
+    top: 0,
+    bottom: 0,
+    left: Math.min(420, Math.round(width * 0.55)),
+    right: 0,
+  };
+}

@@ -11,7 +11,7 @@ import type {
   TripDetailResponse,
 } from "../types";
 import { fetchBusPositions } from "../dataLoader";
-import { formatHeadsign } from "../utils";
+import { formatHeadsign, getPanelMapPadding } from "../utils";
 
 function createGeoJSONCircle(
   center: [number, number],
@@ -148,6 +148,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   const mapRef = useRef<maplibregl.Map | null>(null);
   const stopMarkersRef = useRef<maplibregl.Marker[]>([]);
   const busMarkersRef = useRef<Record<string, maplibregl.Marker>>({});
+  const latestBusDataRef = useRef<Record<string, BusPosition>>({});
   const busRequestIdRef = useRef(0);
   const compactDisplayRef = useRef<boolean | null>(null);
 
@@ -236,14 +237,11 @@ const MapContainer: React.FC<MapContainerProps> = ({
         e.stopPropagation();
         onStopClick(id, map.getZoom());
 
-        const isMobile = window.innerWidth < 768;
         map.flyTo({
           center: [stop.lng, stop.lat],
           zoom: map.getZoom(),
           speed: 1.2,
-          padding: isMobile
-            ? { top: 0, bottom: window.innerHeight * 0.55, left: 0, right: 0 }
-            : { top: 0, bottom: 0, left: 400, right: 0 },
+          padding: getPanelMapPadding(true),
         });
       });
 
@@ -300,37 +298,32 @@ const MapContainer: React.FC<MapContainerProps> = ({
             disposeBusMarker(busMarkersRef.current[tripId]);
             delete busMarkersRef.current[tripId];
           }
+          delete latestBusDataRef.current[tripId];
           return;
         }
 
         activeTripIds.add(tripId);
+        latestBusDataRef.current[tripId] = bus;
 
         if (!busMarkersRef.current[tripId]) {
           const el = createBusMarkerElement(
             bus.route_name,
             bus.headsign,
             () => {
+              const latestBus = latestBusDataRef.current[tripId] ?? bus;
               onBusClick(
                 tripId,
-                bus.route_id,
+                latestBus.route_id,
                 undefined,
-                bus.speed_kmh,
-                bus.occupancy_status,
+                latestBus.speed_kmh,
+                latestBus.occupancy_status,
               );
 
-              const isMobile = window.innerWidth < 768;
               map.flyTo({
-                center: bus.position as [number, number],
+                center: latestBus.position as [number, number],
                 zoom: map.getZoom(),
                 speed: 1.2,
-                padding: isMobile
-                  ? {
-                      top: 0,
-                      bottom: window.innerHeight * 0.55,
-                      left: 0,
-                      right: 0,
-                    }
-                  : { top: 0, bottom: 0, left: 400, right: 0 },
+                padding: getPanelMapPadding(true),
               });
             },
           );
@@ -356,6 +349,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
           if (!activeTripIds.has(tripId)) {
             disposeBusMarker(busMarkersRef.current[tripId]);
             delete busMarkersRef.current[tripId];
+            delete latestBusDataRef.current[tripId];
           }
         });
       }
@@ -451,17 +445,13 @@ const MapContainer: React.FC<MapContainerProps> = ({
         }
 
         const targetZoom = Math.max(map.getZoom(), 16);
-        const isMobile = window.innerWidth < 768;
 
         map.flyTo({
           center: [longitude, latitude],
           zoom: targetZoom,
           speed: 1.2,
           essential: true,
-          padding:
-            isPanelOpenRef.current && isMobile
-              ? { top: 0, bottom: window.innerHeight * 0.55, left: 0, right: 0 }
-              : { top: 0, bottom: 0, left: 0, right: 0 },
+          padding: getPanelMapPadding(isPanelOpenRef.current),
         });
       },
       (error) => {
