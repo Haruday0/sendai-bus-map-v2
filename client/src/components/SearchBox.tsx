@@ -1,5 +1,13 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
-// use Material Icons font for UI icons
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import {
+  CloseButton,
+  Description,
+  Header,
+  Label,
+  ListBox,
+  SearchField,
+  Surface,
+} from "@heroui/react";
 import type { StopsData } from "../types";
 import {
   getSearchHistory,
@@ -15,6 +23,14 @@ interface SearchBoxProps {
   isOpen?: boolean;
 }
 
+interface StopCandidate {
+  id: string;
+  name: string;
+  yomi: string;
+  lat: number;
+  lng: number;
+}
+
 const SearchBox: React.FC<SearchBoxProps> = ({
   onSelectStop,
   onSearchStateChange,
@@ -23,10 +39,10 @@ const SearchBox: React.FC<SearchBoxProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearchResults, setShowSearchResults] = useState(false);
-  const [searchResults, setSearchResults] = useState<React.ReactNode[] | null>(
-    null,
-  );
+  const [historyTick, setHistoryTick] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const isClearingRef = useRef(false);
   const [allStops, setAllStops] = useState<StopsData>({});
 
   // 初回マウント時に全バス停データを取得してキャッシュ
@@ -41,76 +57,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({
     };
     loadAllStops();
   }, []);
-
-  const handleSelect = useCallback(
-    (stopName: string, lat: number, lng: number, representativeId: string) => {
-      saveSearchHistory(representativeId); // 履歴には代表IDを保存
-      setShowSearchResults(false);
-      onSearchStateChange(false);
-      setSearchQuery("");
-      // フォーカスを解除して仮想キーボードを閉じる
-      if (inputRef.current) {
-        inputRef.current.blur();
-      }
-      onSelectStop(stopName, lat, lng);
-    },
-    [onSearchStateChange, onSelectStop],
-  );
-
-  const showHistoryResults = useCallback(
-    function showHistory() {
-      if (onFocus) onFocus();
-
-      const historyIds = getSearchHistory();
-      if (historyIds.length === 0) {
-        setShowSearchResults(false);
-        onSearchStateChange(false);
-        return;
-      }
-
-      onSearchStateChange(true);
-      const items = [
-        <div key="header" className="results-header">
-          最近の検索
-        </div>,
-        ...historyIds
-          .filter((id) => allStops[id])
-          .map((id) => {
-            const s = allStops[id];
-            return (
-              <div
-                key={id}
-                className="search-item"
-                onClick={() => handleSelect(s.name, s.lat, s.lng, id)}
-              >
-                <span className="material-icons-outlined" aria-hidden>
-                  history
-                </span>
-                <div className="search-item-info">
-                  <div className="search-item-name">{s.name}</div>
-                  <div className="search-item-yomi">{s.yomi}</div>
-                </div>
-                <span
-                  className="delete-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeFromSearchHistory(id);
-                    showHistory();
-                  }}
-                >
-                  <span className="material-icons-outlined" aria-hidden>
-                    close
-                  </span>
-                </span>
-              </div>
-            );
-          }),
-      ];
-      setSearchResults(items);
-      setShowSearchResults(true);
-    },
-    [allStops, onFocus, onSearchStateChange, handleSelect],
-  );
 
   // カタカナをひらがなに変換
   const katakanaToHiragana = useCallback((str: string): string => {
@@ -131,18 +77,15 @@ const SearchBox: React.FC<SearchBoxProps> = ({
         const isKana = /[\u3040-\u309F\u30A0-\u30FF]/.test(char);
 
         if (isKanji) {
-          // 漢字は名前から検索
           const pos = name.indexOf(char, namePos);
           if (pos === -1) return false;
           namePos = pos + 1;
         } else if (isKana) {
-          // ひらがな・カタカナは読みから検索（カタカナはひらがなに正規化）
           const normalizedChar = katakanaToHiragana(char);
           const pos = yomi.indexOf(normalizedChar, yomiPos);
           if (pos === -1) return false;
           yomiPos = pos + 1;
         } else {
-          // その他の文字（数字、記号など）は両方で検索
           const nameMatch = name.indexOf(char, namePos);
           const yomiMatch = yomi.indexOf(char, yomiPos);
           if (nameMatch === -1 && yomiMatch === -1) return false;
@@ -156,162 +99,271 @@ const SearchBox: React.FC<SearchBoxProps> = ({
     [katakanaToHiragana],
   );
 
+  // バス停名でグループ化
+  const stopGroups = useMemo<StopCandidate[]>(() => {
+    const groups: Record<string, StopCandidate> = {};
+    Object.keys(allStops).forEach((id) => {
+      const s = allStops[id];
+      if (!groups[s.name]) {
+        groups[s.name] = {
+          id,
+          name: s.name,
+          yomi: s.yomi,
+          lat: s.lat,
+          lng: s.lng,
+        };
+      }
+    });
+    return Object.values(groups);
+  }, [allStops]);
+
+  const historyItems = useMemo<StopCandidate[]>(() => {
+    void historyTick;
+    return getSearchHistory()
+      .filter((id) => allStops[id])
+      .map((id) => {
+        const s = allStops[id];
+        return { id, name: s.name, yomi: s.yomi, lat: s.lat, lng: s.lng };
+      });
+  }, [allStops, historyTick]);
+
+  const searchResultsList = useMemo<StopCandidate[]>(() => {
+    if (!searchQuery || searchQuery.trim().length === 0) return [];
+    const q = searchQuery.toLowerCase();
+
+    const candidates = stopGroups.filter((s) =>
+      flexibleMatch(s.name.toLowerCase(), s.yomi.toLowerCase(), q),
+    );
+
+    const tier1 = candidates.filter((s) => {
+      const firstChar = q[0];
+      const isKanji = /[\u4E00-\u9FAF\u3400-\u4DBF]/.test(firstChar);
+      const isKana = /[\u3040-\u309F\u30A0-\u30FF]/.test(firstChar);
+
+      if (isKanji) {
+        return s.name.toLowerCase().startsWith(firstChar);
+      } else if (isKana) {
+        const normalizedFirstChar = katakanaToHiragana(firstChar);
+        return s.yomi.toLowerCase().startsWith(normalizedFirstChar);
+      } else {
+        return (
+          s.name.toLowerCase().startsWith(firstChar) ||
+          s.yomi.toLowerCase().startsWith(firstChar)
+        );
+      }
+    });
+    const tier2 = candidates.filter((s) => !tier1.includes(s));
+
+    const sortByLength = (a: { name: string }, b: { name: string }) =>
+      a.name.length - b.name.length;
+    tier1.sort(sortByLength);
+    tier2.sort(sortByLength);
+
+    return [...tier1, ...tier2].slice(0, 5);
+  }, [searchQuery, stopGroups, flexibleMatch, katakanaToHiragana]);
+
+  const isHistoryMode = searchQuery.trim().length === 0;
+  const activeItems = isHistoryMode ? historyItems : searchResultsList;
+
+  const handleSelect = useCallback(
+    (stopName: string, lat: number, lng: number, representativeId: string) => {
+      saveSearchHistory(representativeId);
+      setHistoryTick((t) => t + 1);
+      setShowSearchResults(false);
+      onSearchStateChange(false);
+      setSearchQuery("");
+      inputRef.current?.blur();
+      onSelectStop(stopName, lat, lng);
+    },
+    [onSearchStateChange, onSelectStop],
+  );
+
+  const showHistoryResults = useCallback(() => {
+    if (onFocus) onFocus();
+
+    if (historyItems.length === 0) {
+      setShowSearchResults(false);
+      onSearchStateChange(false);
+      return;
+    }
+
+    onSearchStateChange(true);
+    setShowSearchResults(true);
+  }, [historyItems.length, onFocus, onSearchStateChange]);
+
   const handleSearch = useCallback(
     (query: string) => {
       setSearchQuery(query);
+      if (isClearingRef.current) {
+        isClearingRef.current = false;
+        return;
+      }
       if (!query || query.trim().length === 0) {
         showHistoryResults();
         return;
       }
 
       const q = query.toLowerCase();
-
-      // バス停名でグループ化
-      const stopGroups: Record<
-        string,
-        { id: string; name: string; yomi: string; lat: number; lng: number }
-      > = {};
-      Object.keys(allStops).forEach((id) => {
-        const s = allStops[id];
-        if (!stopGroups[s.name]) {
-          stopGroups[s.name] = {
-            id,
-            name: s.name,
-            yomi: s.yomi,
-            lat: s.lat,
-            lng: s.lng,
-          };
-        }
-      });
-
-      // 柔軟なマッチングを使用
-      const candidates = Object.values(stopGroups).filter((s) =>
+      const hasMatch = stopGroups.some((s) =>
         flexibleMatch(s.name.toLowerCase(), s.yomi.toLowerCase(), q),
       );
-
-      // 先頭マッチの判定：クエリの最初の文字が名前またはよみの先頭から始まるか
-      const tier1 = candidates.filter((s) => {
-        const firstChar = q[0];
-        const isKanji = /[\u4E00-\u9FAF\u3400-\u4DBF]/.test(firstChar);
-        const isKana = /[\u3040-\u309F\u30A0-\u30FF]/.test(firstChar);
-
-        if (isKanji) {
-          return s.name.toLowerCase().startsWith(firstChar);
-        } else if (isKana) {
-          // カタカナはひらがなに正規化してから比較
-          const normalizedFirstChar = katakanaToHiragana(firstChar);
-          return s.yomi.toLowerCase().startsWith(normalizedFirstChar);
-        } else {
-          return (
-            s.name.toLowerCase().startsWith(firstChar) ||
-            s.yomi.toLowerCase().startsWith(firstChar)
-          );
-        }
-      });
-      const tier2 = candidates.filter((s) => !tier1.includes(s));
-
-      const sortByLength = (a: { name: string }, b: { name: string }) =>
-        a.name.length - b.name.length;
-      tier1.sort(sortByLength);
-      tier2.sort(sortByLength);
-
-      const results = [...tier1, ...tier2].slice(0, 5);
-
-      if (results.length > 0) {
-        onSearchStateChange(true);
-        const items = [
-          <div key="header" className="results-header">
-            検索結果
-          </div>,
-          ...results.map((s) => (
-            <div
-              key={s.id}
-              className="search-item"
-              onClick={() => handleSelect(s.name, s.lat, s.lng, s.id)}
-            >
-              <span className="material-icons-outlined" aria-hidden>
-                place
-              </span>
-              <div className="search-item-info">
-                <div className="search-item-name">{s.name}</div>
-                <div className="search-item-yomi">{s.yomi}</div>
-              </div>
-            </div>
-          )),
-        ];
-        setSearchResults(items);
-        setShowSearchResults(true);
-        onSearchStateChange(true);
-      } else {
-        onSearchStateChange(false);
-        setShowSearchResults(false);
-      }
+      setShowSearchResults(hasMatch);
+      onSearchStateChange(hasMatch);
     },
-    [
-      allStops,
-      onSearchStateChange,
-      showHistoryResults,
-      handleSelect,
-      flexibleMatch,
-      katakanaToHiragana,
-    ],
+    [stopGroups, flexibleMatch, onSearchStateChange, showHistoryResults],
   );
 
   const clearSearch = useCallback(() => {
+    isClearingRef.current = true;
     setSearchQuery("");
     setShowSearchResults(false);
     onSearchStateChange(false);
   }, [onSearchStateChange]);
 
-  // 外部から isOpen = false で閉じられたら、検索結果を非表示にする
-  useEffect(() => {
-    if (!isOpen) {
-      setShowSearchResults(false);
-    }
-  }, [isOpen]);
-
   // 外クリックで閉じる
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest("#search-container")) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
         setShowSearchResults(false);
         onSearchStateChange(false);
-        // フォーカスを解除して仮想キーボードを閉じる
-        if (inputRef.current) {
-          inputRef.current.blur();
-        }
+        inputRef.current?.blur();
       }
     };
     document.addEventListener("click", handler);
     return () => document.removeEventListener("click", handler);
   }, [onSearchStateChange]);
 
+  const handleDeleteHistory = useCallback(
+    (id: string) => {
+      removeFromSearchHistory(id);
+      const remaining = getSearchHistory().filter((itemId) => allStops[itemId]);
+      setHistoryTick((t) => t + 1);
+      if (remaining.length === 0) {
+        setShowSearchResults(false);
+        onSearchStateChange(false);
+      }
+    },
+    [allStops, onSearchStateChange],
+  );
+
   return (
-    <div id="search-container">
-      <div className="search-box">
-        <span className="material-icons-outlined" aria-hidden>
-          search
-        </span>
-        <input
-          ref={inputRef}
-          type="text"
-          placeholder="バス停を検索"
-          value={searchQuery}
-          onChange={(e) => handleSearch(e.target.value)}
-          onFocus={showHistoryResults}
-          onClick={showHistoryResults}
-        />
-        {searchQuery && (
-          <span className="search-clear-btn" onClick={clearSearch}>
-            <span className="material-icons-outlined" aria-hidden>
-              close
-            </span>
-          </span>
-        )}
-      </div>
-      {showSearchResults && searchResults && (
-        <div id="search-results">{searchResults}</div>
+    <div
+      id="search-container"
+      ref={containerRef}
+      className="pointer-events-none absolute top-5 left-5 z-[7000] flex w-[calc(100%-40px)] max-w-[360px] flex-col gap-2 max-md:top-2.5 max-md:left-2.5 max-md:w-[calc(100%-20px)] max-md:max-w-none"
+    >
+      <SearchField
+        fullWidth
+        aria-label="バス停を検索"
+        value={searchQuery}
+        onChange={handleSearch}
+        onClear={clearSearch}
+        className="pointer-events-auto"
+      >
+        <SearchField.Group className="glass-surface h-12 rounded-full px-1.5">
+          <SearchField.SearchIcon className="ms-3 size-4.5 text-muted" />
+          <SearchField.Input
+            ref={inputRef}
+            placeholder="バス停を検索"
+            onFocus={showHistoryResults}
+            onClick={showHistoryResults}
+          />
+          <SearchField.ClearButton aria-label="検索をクリア" />
+        </SearchField.Group>
+      </SearchField>
+
+      {isOpen && showSearchResults && activeItems.length > 0 && (
+        <Surface
+          id="search-results"
+          variant="default"
+          className="glass-surface-lg pointer-events-auto max-h-[400px] overflow-y-auto rounded-2xl p-1.5"
+        >
+          {isHistoryMode ? (
+            <div role="region" aria-label="最近の検索">
+              <Header>最近の検索</Header>
+              <div className="flex flex-col gap-1">
+                {historyItems.map((s) => (
+                  <div
+                    key={s.id}
+                    className="flex min-h-9 w-full items-center gap-1 rounded-2xl px-2 py-1.5 transition-colors hover:bg-default"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleSelect(s.name, s.lat, s.lng, s.id)}
+                      className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 bg-transparent text-left outline-none"
+                    >
+                      <span
+                        className="material-icons-outlined shrink-0 text-[18px] text-muted"
+                        aria-hidden
+                      >
+                        history
+                      </span>
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate text-sm font-bold text-foreground">
+                          {s.name}
+                        </span>
+                        {s.yomi && (
+                          <span className="truncate text-[11px] text-muted">
+                            {s.yomi}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                    <CloseButton
+                      aria-label={`${s.name}を履歴から削除`}
+                      onPress={() => handleDeleteHistory(s.id)}
+                      className="shrink-0"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <ListBox
+              aria-label="検索結果"
+              onAction={(key) => {
+                const selected = searchResultsList.find(
+                  (item) => item.id === String(key),
+                );
+                if (selected) {
+                  handleSelect(
+                    selected.name,
+                    selected.lat,
+                    selected.lng,
+                    selected.id,
+                  );
+                }
+              }}
+            >
+              <ListBox.Section>
+                <Header>検索結果</Header>
+                {searchResultsList.map((s) => (
+                  <ListBox.Item key={s.id} id={s.id} textValue={s.name}>
+                    <span
+                      className="material-icons-outlined shrink-0 text-[18px] text-muted"
+                      aria-hidden
+                    >
+                      place
+                    </span>
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <Label className="text-sm font-bold text-foreground">
+                        {s.name}
+                      </Label>
+                      {s.yomi && (
+                        <Description className="text-[11px] text-muted">
+                          {s.yomi}
+                        </Description>
+                      )}
+                    </div>
+                  </ListBox.Item>
+                ))}
+              </ListBox.Section>
+            </ListBox>
+          )}
+        </Surface>
       )}
     </div>
   );

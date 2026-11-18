@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { createRoot, type Root } from "react-dom/client";
+import { Button } from "@heroui/react";
 // using Material Icons font for markers
 import type {
   AppData,
@@ -860,22 +861,26 @@ const MapContainer: React.FC<MapContainerProps> = ({
         id="location-control-container"
         className={isPanelOpen ? "panel-open" : ""}
       >
-        <button
-          id="location-btn"
-          type="button"
+        <Button
+          isIconOnly
+          size="lg"
+          variant="tertiary"
           aria-label="現在地に移動"
-          title="現在地に移動"
-          onClick={handleLocateUser}
-          className={hasLocated ? "active" : ""}
+          onPress={handleLocateUser}
+          className={`glass-surface rounded-2xl ${hasLocated ? "text-accent!" : ""}`}
         >
-          <span className="material-icons-outlined" aria-hidden>
+          <span className="material-icons-outlined text-[24px]" aria-hidden>
             my_location
           </span>
-        </button>
+        </Button>
       </div>
 
       <div
-        className={`map-attribution ${isPanelOpen ? "panel-open" : ""}`}
+        className={`glass-surface absolute right-2 bottom-2 z-[6500] inline-flex h-6.5 items-center gap-1 rounded-full px-2.5 text-[11px] font-medium leading-none text-foreground transition-opacity duration-250 max-md:right-1.5 max-md:bottom-1.5 max-md:h-6 max-md:px-2 ${
+          isPanelOpen
+            ? "max-md:pointer-events-none max-md:invisible max-md:opacity-0 max-md:translate-y-1"
+            : ""
+        }`}
         role="note"
         aria-live="polite"
       >
@@ -886,6 +891,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
               href="https://www.openstreetmap.org/copyright"
               target="_blank"
               rel="noopener noreferrer"
+              className="text-inherit no-underline hover:underline"
             >
               OpenStreetMap contributors
             </a>
@@ -895,6 +901,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
             href="https://maps.gsi.go.jp/development/ichiran.html"
             target="_blank"
             rel="noopener noreferrer"
+            className="text-inherit no-underline hover:underline"
           >
             地理院タイル
           </a>
@@ -902,8 +909,11 @@ const MapContainer: React.FC<MapContainerProps> = ({
       </div>
       {isUpdatesPaused && (
         <div className="updates-paused-overlay">
-          <button
-            onClick={() => {
+          <Button
+            variant="primary"
+            size="lg"
+            className="shadow-overlay"
+            onPress={() => {
               setIsUpdatesPaused(false);
               lastActivityTimeRef.current = Date.now();
               if (inactivityTimerRef.current) {
@@ -916,10 +926,9 @@ const MapContainer: React.FC<MapContainerProps> = ({
                 3 * 60 * 1000,
               );
             }}
-            className="resume-button"
           >
             自動更新を停止しました。再開するにはここをクリック
-          </button>
+          </Button>
         </div>
       )}
     </div>

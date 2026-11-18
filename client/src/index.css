@@ -1,30 +1,32 @@
+@import "@heroui/styles";
+
 /* ====================================================
    仙台バスマップ — Design System Tokens & Base Styles
    ==================================================== */
 
 :root {
   /* --- Brand Colors --- */
-  --color-brand-50: hsl(221, 90%, 95%);
-  --color-brand-100: hsl(221, 85%, 88%);
-  --color-brand-200: hsl(221, 85%, 78%);
-  --color-brand-300: hsl(221, 83%, 68%);
-  --color-brand-400: hsl(221, 83%, 58%);
-  --color-brand-500: #2563eb; /* Royal Blue */
-  --color-brand-600: #1d4ed8;
-  --color-brand-700: #1e40af;
+  --legacy-brand-50: hsl(221, 90%, 95%);
+  --legacy-brand-100: hsl(221, 85%, 88%);
+  --legacy-brand-200: hsl(221, 85%, 78%);
+  --legacy-brand-300: hsl(221, 83%, 68%);
+  --legacy-brand-400: hsl(221, 83%, 58%);
+  --legacy-brand-500: #2563eb; /* Royal Blue */
+  --legacy-brand-600: #1d4ed8;
+  --legacy-brand-700: #1e40af;
 
   /* --- Neutral --- */
-  --color-neutral-0: hsl(220, 20%, 99%);
-  --color-neutral-50: hsl(220, 18%, 97%);
-  --color-neutral-100: hsl(220, 15%, 94%);
-  --color-neutral-200: hsl(220, 12%, 88%);
-  --color-neutral-300: hsl(220, 10%, 76%);
-  --color-neutral-400: hsl(220, 9%, 60%);
-  --color-neutral-500: hsl(220, 9%, 46%);
-  --color-neutral-600: hsl(220, 10%, 32%);
-  --color-neutral-700: hsl(220, 12%, 22%);
-  --color-neutral-800: hsl(220, 14%, 14%);
-  --color-neutral-900: hsl(220, 16%, 9%);
+  --legacy-neutral-0: hsl(220, 20%, 99%);
+  --legacy-neutral-50: hsl(220, 18%, 97%);
+  --legacy-neutral-100: hsl(220, 15%, 94%);
+  --legacy-neutral-200: hsl(220, 12%, 88%);
+  --legacy-neutral-300: hsl(220, 10%, 76%);
+  --legacy-neutral-400: hsl(220, 9%, 60%);
+  --legacy-neutral-500: hsl(220, 9%, 46%);
+  --legacy-neutral-600: hsl(220, 10%, 32%);
+  --legacy-neutral-700: hsl(220, 12%, 22%);
+  --legacy-neutral-800: hsl(220, 14%, 14%);
+  --legacy-neutral-900: hsl(220, 16%, 9%);
 
   /* --- Semantic Status --- */
   --color-empty: hsl(199, 92%, 56%);
@@ -33,10 +35,13 @@
   --color-full: hsl(4, 78%, 55%);
   --color-delay: hsl(28, 100%, 54%);
 
-  /* --- Glass / Surface --- */
+  /* --- Glass / Surface (HeroUI Light/Dark対応の共通すりガラス定義) --- */
   --glass-bg: rgba(255, 255, 255, 0.58);
   --glass-bg-strong: rgba(255, 255, 255, 0.72);
   --glass-border: rgba(255, 255, 255, 0.72);
+  --glass-surface: rgba(255, 255, 255, 0.72);
+  --glass-surface-hover: rgba(255, 255, 255, 0.88);
+  --glass-stroke: rgba(255, 255, 255, 0.72);
   --glass-shadow:
     0 10px 30px rgba(22, 49, 67, 0.16),
     inset 0 1px 0 rgba(255, 255, 255, 0.64);
@@ -48,15 +53,11 @@
   --backdrop-blur: blur(20px) saturate(155%);
 
   /* --- Radius --- */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 18px;
-  --radius-xl: 24px;
-  --radius-pill: 999px;
-
-  /* --- Typography --- */
-  --font-sans: "Inter", "Noto Sans JP", sans-serif;
-  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+  --legacy-radius-sm: 8px;
+  --legacy-radius-md: 12px;
+  --legacy-radius-lg: 18px;
+  --legacy-radius-xl: 24px;
+  --legacy-radius-pill: 999px;
 
   /* --- Transition --- */
   --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
@@ -68,62 +69,135 @@
    Reset & Base
    ==================================================== */
 
-html,
-body {
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  font-family: var(--font-sans);
-  font-optical-sizing: auto;
-  font-style: normal;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background: var(--color-neutral-100);
-  color: var(--color-neutral-800);
-}
+@layer base {
+  :root,
+  :host {
+    --accent: #2563eb;
+    --accent-foreground: #ffffff;
+    --focus: #2563eb;
+    --font-sans: "Inter", "Noto Sans JP", sans-serif;
+    --font-mono: "JetBrains Mono", "Fira Code", monospace;
+  }
 
-#root {
-  height: 100%;
-  width: 100%;
-}
+  .dark,
+  [data-theme="dark"] {
+    --accent: #3b82f6;
+    --accent-foreground: #ffffff;
+    --focus: #3b82f6;
+    --glass-surface: rgba(24, 24, 27, 0.74);
+    --glass-surface-hover: rgba(39, 39, 42, 0.86);
+    --glass-stroke: rgba(255, 255, 255, 0.14);
+    --glass-shadow:
+      0 10px 30px rgba(0, 0, 0, 0.35),
+      inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    --glass-shadow-lg:
+      0 20px 54px rgba(0, 0, 0, 0.45),
+      inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  }
 
-/* Form elements inherit font */
-input,
-button,
-textarea,
-select {
-  font-family: inherit;
-  font-optical-sizing: inherit;
-  -webkit-font-smoothing: antialiased;
-}
+  html,
+  body {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: clip;
+    overscroll-behavior: none;
+    font-family: var(--font-sans);
+    font-optical-sizing: auto;
+    font-style: normal;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background: var(--background);
+    color: var(--foreground);
+  }
 
-/* Smooth scroll for overflowing elements */
-* {
-  box-sizing: border-box;
-}
+  #root {
+    position: fixed;
+    inset: 0;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+  }
 
-@supports (scrollbar-width: thin) {
+  /* Form elements inherit font */
+  input,
+  button,
+  textarea,
+  select {
+    font-family: inherit;
+    font-optical-sizing: inherit;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Smooth scroll for overflowing elements */
   * {
-    scrollbar-width: thin;
-    scrollbar-color: var(--color-neutral-200) transparent;
+    box-sizing: border-box;
   }
 }
 
-::-webkit-scrollbar {
+@supports (scrollbar-width: thin) {
+  .panel-content,
+  #search-results {
+    scrollbar-width: thin;
+    scrollbar-color: var(--legacy-neutral-200) transparent;
+  }
+}
+
+.panel-content::-webkit-scrollbar,
+#search-results::-webkit-scrollbar {
   width: 4px;
   height: 4px;
 }
 
-::-webkit-scrollbar-track {
+.panel-content::-webkit-scrollbar-track,
+#search-results::-webkit-scrollbar-track {
   background: transparent;
 }
 
-::-webkit-scrollbar-thumb {
-  background: var(--color-neutral-200);
-  border-radius: var(--radius-pill);
+.panel-content::-webkit-scrollbar-thumb,
+#search-results::-webkit-scrollbar-thumb {
+  background: var(--legacy-neutral-200);
+  border-radius: var(--legacy-radius-pill);
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-neutral-300);
+.panel-content::-webkit-scrollbar-thumb:hover,
+#search-results::-webkit-scrollbar-thumb:hover {
+  background: var(--legacy-neutral-300);
+}
+
+/* ====================================================
+   Shared Frosted Glass Utilities (Light / Dark対応)
+   ==================================================== */
+
+@utility glass-surface {
+  background-color: var(--glass-surface);
+  color: var(--foreground);
+  border: 1px solid var(--glass-stroke);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+  backdrop-filter: var(--backdrop-blur);
+
+  &:is(.button) {
+    --button-bg: var(--glass-surface);
+    --button-bg-hover: var(--glass-surface-hover);
+    --button-bg-pressed: var(--glass-surface);
+    --button-fg: var(--foreground);
+  }
+
+  @media (hover: hover) {
+    &:is(.button):hover,
+    &:is(.button)[data-hovered="true"] {
+      background-color: var(--glass-surface-hover);
+    }
+  }
+}
+
+@utility glass-surface-lg {
+  background-color: var(--glass-surface);
+  color: var(--overlay-foreground);
+  border: 1px solid var(--glass-stroke);
+  box-shadow: var(--glass-shadow-lg);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+  backdrop-filter: var(--backdrop-blur);
 }

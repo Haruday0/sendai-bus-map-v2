@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type * as maplibregl from "maplibre-gl";
+import { Button } from "@heroui/react";
 import {
   fetchStopsByBounds,
   loadEssentialData,
@@ -518,15 +519,19 @@ function App() {
         onFlyToStop={handleFlyToStop}
       />
 
-      <button
-        id="github-footer-link"
-        type="button"
-        onClick={() => setIsAboutOpen(true)}
+      <Button
+        variant="tertiary"
+        size="sm"
+        onPress={() => setIsAboutOpen(true)}
         aria-label="アプリについてとソースコード"
-        title="アプリについて"
+        className={`glass-surface absolute bottom-2 left-2 z-[6500] h-6.5 gap-1.5 px-2.5 text-[11px] max-md:bottom-1.5 max-md:left-1.5 max-md:h-6 max-md:px-2 ${
+          isPanelOpen
+            ? "max-md:pointer-events-none max-md:invisible max-md:opacity-0"
+            : ""
+        }`}
       >
         <svg
-          className="github-mark"
+          className="size-3.5 shrink-0"
           viewBox="0 0 16 16"
           width="16"
           height="16"
@@ -538,7 +543,7 @@ function App() {
           />
         </svg>
         <span>GitHub / 概要</span>
-      </button>
+      </Button>
 
       {/* 💡 ページ内ウィンドウ */}
       <AboutModal isOpen={isAboutOpen} onClose={() => setIsAboutOpen(false)} />
