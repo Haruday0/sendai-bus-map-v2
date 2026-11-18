@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type * as maplibregl from "maplibre-gl";
-import { Button } from "@heroui/react";
+import {
+  Button,
+  Checkbox,
+  Label,
+  Separator,
+  Slider,
+  Spinner,
+  Surface,
+} from "@heroui/react";
 import {
   fetchStopsByBounds,
   loadEssentialData,
@@ -445,7 +453,12 @@ function App() {
   // ==================== ローディング ====================
 
   if (!data) {
-    return <div className="loading-screen">読み込み中...</div>;
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-background text-sm font-medium text-muted">
+        <Spinner size="lg" />
+        <span>読み込み中...</span>
+      </div>
+    );
   }
 
   // ==================== レンダリング ====================
@@ -462,47 +475,62 @@ function App() {
       <LayerControl activeLayer={activeLayer} onLayerChange={setActiveLayer} />
 
       {isDebugMode && (
-        <div id="debug-info-panel" role="status" aria-live="polite">
-          <div className="debug-row">
-            <span className="debug-label">Debug URL</span>
-            <span className="debug-value">{debugModeUrl}</span>
+        <Surface
+          id="debug-info-panel"
+          variant="default"
+          role="status"
+          aria-live="polite"
+          className="glass-surface absolute top-5 right-[72px] z-[9050] flex max-w-[min(560px,calc(100vw-100px))] flex-col gap-1.5 rounded-2xl px-3 py-2.5 text-[11px] max-md:top-[65px] max-md:right-14 max-md:max-w-[calc(100vw-72px)] max-md:text-[10px]"
+        >
+          <div className="grid grid-cols-[64px_1fr] items-start gap-2 max-md:grid-cols-[56px_1fr] max-md:gap-1.5">
+            <span className="font-bold text-muted">Debug URL</span>
+            <span className="break-all text-foreground">{debugModeUrl}</span>
           </div>
-          <div className="debug-row">
-            <span className="debug-label">Zoom</span>
-            <span className="debug-value">{zoom.toFixed(2)}</span>
+          <div className="grid grid-cols-[64px_1fr] items-start gap-2 max-md:grid-cols-[56px_1fr] max-md:gap-1.5">
+            <span className="font-bold text-muted">Zoom</span>
+            <span className="text-foreground">{zoom.toFixed(2)}</span>
           </div>
 
+          <Separator className="my-0.5" />
+
           {/* 💡 24時間時刻シミュレーター */}
-          <div className="debug-sim-control">
-            <label className="debug-sim-toggle">
-              <input
-                type="checkbox"
-                checked={enableSimTime}
-                onChange={(e) => setEnableSimTime(e.target.checked)}
-              />
-              時刻シミュレーション
-            </label>
+          <div className="flex flex-col gap-1.5">
+            <Checkbox isSelected={enableSimTime} onChange={setEnableSimTime}>
+              <Checkbox.Control>
+                <Checkbox.Indicator />
+              </Checkbox.Control>
+              <Checkbox.Content>
+                <Label className="text-[11px] font-bold text-accent">
+                  時刻シミュレーション
+                </Label>
+              </Checkbox.Content>
+            </Checkbox>
+
             {enableSimTime && (
-              <div className="debug-sim-slider-row">
-                <span className="debug-sim-time-display">
+              <div className="flex items-center gap-2.5">
+                <span className="min-w-11 font-mono text-[13px] font-extrabold text-foreground">
                   {formatSimTime(simSeconds).substring(0, 5)}
                 </span>
-                <input
-                  type="range"
-                  min={0} // 00:00
-                  max={86340} // 23:59
-                  step={60} // 1分刻みで完全自由
+                <Slider
+                  aria-label="シミュレーション時刻"
+                  minValue={0}
+                  maxValue={86340}
+                  step={60}
                   value={simSeconds}
-                  onInput={(e) =>
-                    setSimSeconds(Number((e.target as HTMLInputElement).value))
+                  onChange={(val) =>
+                    setSimSeconds(Array.isArray(val) ? val[0] : val)
                   }
-                  onChange={(e) => setSimSeconds(Number(e.target.value))}
-                  className="debug-sim-slider"
-                />
+                  className="flex-1"
+                >
+                  <Slider.Track>
+                    <Slider.Fill />
+                    <Slider.Thumb />
+                  </Slider.Track>
+                </Slider>
               </div>
             )}
           </div>
-        </div>
+        </Surface>
       )}
 
       <BusPanel

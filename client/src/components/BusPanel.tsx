@@ -6,6 +6,7 @@ import React, {
   useRef,
 } from "react";
 // use Material Icons font for simple UI icons
+import { Spinner } from "@heroui/react";
 import type { AppData, PanelTrip, Arrival, TripDetailResponse } from "../types";
 import {
   formatHeadsign,
@@ -14,6 +15,14 @@ import {
   timeToSec,
 } from "../utils";
 import { fetchBusPositions } from "../dataLoader";
+
+/** パネル内のデータ取得中に表示する共通スピナー */
+const PanelLoadingState: React.FC<{ label: string }> = ({ label }) => (
+  <div className="flex flex-col items-center justify-center gap-2.5 py-10 text-sm font-medium text-muted">
+    <Spinner size="md" />
+    <span>{label}</span>
+  </div>
+);
 
 interface BusPanelProps {
   data: AppData;
@@ -507,11 +516,7 @@ const BusPanel: React.FC<BusPanelProps> = ({
         </div>,
       ];
     } else if (selectedTrip && !tripDetail) {
-      items = [
-        <div key="loading" className="empty-message">
-          読み込み中...
-        </div>,
-      ];
+      items = [<PanelLoadingState key="loading" label="読み込み中..." />];
     } else if (selectedStopId) {
       // バス停時刻表モード
       const stop = data.stops[selectedStopId];
@@ -561,7 +566,11 @@ const BusPanel: React.FC<BusPanelProps> = ({
           });
         });
 
-        if (allArrivals.length === 0) {
+        if (timetableReadyForStop !== selectedStopId) {
+          items = [
+            <PanelLoadingState key="loading" label="時刻表を読み込み中..." />,
+          ];
+        } else if (allArrivals.length === 0) {
           items = [
             <div key="empty" className="empty-message">
               本日の運行はありません
@@ -750,6 +759,7 @@ const BusPanel: React.FC<BusPanelProps> = ({
     tripOccupancyMap,
     currentTime,
     initialZoom,
+    timetableReadyForStop,
     onSelectBus,
     onFlyToStop,
   ]);

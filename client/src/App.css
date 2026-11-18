@@ -9,37 +9,6 @@
   background: var(--legacy-neutral-100);
 }
 
-/* ===================== LOADING ==================== */
-.loading-screen {
-  height: 100%;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--legacy-neutral-400);
-  background: var(--legacy-neutral-50);
-}
-
-.loading-screen::before {
-  content: "";
-  width: 36px;
-  height: 36px;
-  border: 3px solid var(--legacy-neutral-200);
-  border-top-color: var(--legacy-brand-500);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 /* ===================== STOP MARKERS =============== */
 .stop-marker-container {
   width: 20px;
@@ -784,83 +753,6 @@
   z-index: 9000;
 }
 
-#debug-info-panel {
-  position: absolute;
-  top: 20px;
-  right: 72px;
-  z-index: 9050;
-  max-width: min(560px, calc(100vw - 100px));
-  padding: 10px 12px;
-  border-radius: var(--legacy-radius-lg);
-  background: var(--glass-bg-strong);
-  -webkit-backdrop-filter: var(--backdrop-blur);
-  backdrop-filter: var(--backdrop-blur);
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--glass-shadow);
-  font-size: 11px;
-  color: var(--legacy-neutral-600);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-/* デバッグ用24時間タイムスライダー */
-.debug-sim-control {
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px dashed var(--legacy-neutral-200);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.debug-sim-toggle {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--legacy-brand-600);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-}
-
-.debug-sim-slider-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-.debug-sim-time-display {
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--legacy-neutral-800);
-  font-family: var(--font-mono);
-  min-width: 44px;
-}
-
-.debug-sim-slider {
-  flex: 1;
-  cursor: pointer;
-  accent-color: var(--legacy-brand-500);
-}
-
-.debug-row {
-  display: grid;
-  grid-template-columns: 64px 1fr;
-  gap: 8px;
-  align-items: start;
-}
-
-.debug-label {
-  font-weight: 700;
-  color: var(--legacy-neutral-400);
-}
-.debug-value {
-  word-break: break-all;
-  color: var(--legacy-neutral-700);
-}
-
 /* Mobile overrides */
 @media (max-width: 767px) {
   #layer-control-container {
@@ -877,17 +769,6 @@
     pointer-events: none;
   }
 
-  #debug-info-panel {
-    top: 65px;
-    right: 56px;
-    max-width: calc(100vw - 72px);
-    font-size: 10px;
-  }
-
-  .debug-row {
-    grid-template-columns: 56px 1fr;
-    gap: 6px;
-  }
   .debug-json-block {
     font-size: 10px;
     max-height: 180px;
