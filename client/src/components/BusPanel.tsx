@@ -6,7 +6,15 @@ import React, {
   useRef,
 } from "react";
 // use Material Icons font for simple UI icons
-import { Spinner } from "@heroui/react";
+import {
+  Card,
+  Chip,
+  CloseButton,
+  EmptyState,
+  ScrollShadow,
+  Spinner,
+  Surface,
+} from "@heroui/react";
 import type { AppData, PanelTrip, Arrival, TripDetailResponse } from "../types";
 import {
   formatHeadsign,
@@ -15,6 +23,7 @@ import {
   timeToSec,
 } from "../utils";
 import { fetchBusPositions } from "../dataLoader";
+import { Timeline, TimelineItem } from "./Timeline";
 
 /** パネル内のデータ取得中に表示する共通スピナー */
 const PanelLoadingState: React.FC<{ label: string }> = ({ label }) => (
@@ -23,6 +32,60 @@ const PanelLoadingState: React.FC<{ label: string }> = ({ label }) => (
     <span>{label}</span>
   </div>
 );
+
+/** パネル内の空状態・データなし時に表示する共通 EmptyState */
+const PanelEmptyState: React.FC<{ title: string }> = ({ title }) => (
+  <EmptyState className="py-10 text-center">{title}</EmptyState>
+);
+
+/** 系統番号を公式カラー付き HeroUI Chip で表示する共通バッジ */
+const RouteBadgeChip: React.FC<{
+  label: string;
+  color: string;
+  size?: "header" | "row";
+}> = ({ label, color, size = "row" }) => (
+  <Chip
+    size={size === "header" ? "md" : "sm"}
+    className={`shrink-0 font-extrabold tracking-[0.02em] ${
+      size === "header" ? "text-sm" : "text-[13px]"
+    }`}
+    style={{ backgroundColor: color, color: "#1b4406" }}
+  >
+    <Chip.Label>{label}</Chip.Label>
+  </Chip>
+);
+
+/** 遅延時でも予測時刻を縦中央に揃える時刻表示 */
+const PanelTimeDisplay: React.FC<{
+  scheduledTime: string;
+  estimatedTime: string | null;
+  isPast: boolean;
+}> = ({ scheduledTime, estimatedTime, isPast }) => {
+  const timeText = scheduledTime.substring(0, 5);
+  if (estimatedTime) {
+    return (
+      <div className="relative flex min-h-10 w-full items-center justify-center [font-feature-settings:'tnum']">
+        <del className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[180%] text-[11px] leading-none font-normal whitespace-nowrap text-muted line-through decoration-2">
+          {timeText}
+        </del>
+        <span className="text-[16px] leading-none font-bold tracking-[-0.03em] whitespace-nowrap text-foreground">
+          {estimatedTime}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex min-h-10 w-full items-center justify-center [font-feature-settings:'tnum']">
+      <span
+        className={`text-[16px] leading-none font-bold tracking-[-0.03em] whitespace-nowrap ${
+          isPast ? "text-muted" : "text-foreground"
+        }`}
+      >
+        {timeText}
+      </span>
+    </div>
+  );
+};
 
 interface BusPanelProps {
   data: AppData;
@@ -44,38 +107,55 @@ interface BusPanelProps {
   onFlyToStop: (lng: number, lat: number) => void;
 }
 
+type OccupancyChipColor =
+  | "accent"
+  | "success"
+  | "warning"
+  | "danger"
+  | "default";
+
 function getOccupancyDisplay(status?: string): {
   icon: "group" | "group_off";
   label: string;
-  toneClass: string;
+  iconColorClass: string;
+  chipColor: OccupancyChipColor;
 } {
   switch (status) {
     case "EMPTY":
-      return { icon: "group", label: "空いています", toneClass: "occ-empty" };
+      return {
+        icon: "group",
+        label: "空いています",
+        iconColorClass: "text-accent",
+        chipColor: "accent",
+      };
     case "MANY_SEATS_AVAILABLE":
       return {
         icon: "group",
         label: "座席に余裕があります",
-        toneClass: "occ-many-seats",
+        iconColorClass: "text-success",
+        chipColor: "success",
       };
     case "STANDING_ROOM_ONLY":
       return {
         icon: "group",
         label: "混雑しています",
-        toneClass: "occ-standing-only",
+        iconColorClass: "text-warning",
+        chipColor: "warning",
       };
     case "FULL":
       return {
         icon: "group",
         label: "非常に混雑しています",
-        toneClass: "occ-full",
+        iconColorClass: "text-danger",
+        chipColor: "danger",
       };
     case "NO_DATA_AVAILABLE":
     default:
       return {
         icon: "group_off",
         label: "混雑情報なし",
-        toneClass: "occ-no-data",
+        iconColorClass: "text-muted",
+        chipColor: "default",
       };
   }
 }
@@ -391,7 +471,8 @@ const BusPanel: React.FC<BusPanelProps> = ({
     let occupancyInfo: {
       icon: "group" | "group_off";
       label: string;
-      toneClass: string;
+      iconColorClass: string;
+      chipColor: OccupancyChipColor;
     } | null = null;
     let initialTargetId: string | null = null;
     const nowSec = timeToSec(currentTime);
@@ -408,14 +489,9 @@ const BusPanel: React.FC<BusPanelProps> = ({
           : "#a3d742";
       via = trip.via ? `${trip.via} 経由` : "";
       title = (
-        <div className="panel-title-content">
-          <span
-            className="route-badge"
-            style={{ backgroundColor: routeColor, color: "#1b4406" }}
-          >
-            {routeName}
-          </span>
-          <span className="destination-name">
+        <div className="flex w-full flex-nowrap items-center gap-2">
+          <RouteBadgeChip label={routeName} color={routeColor} size="header" />
+          <span className="leading-snug whitespace-normal [word-break:auto-phrase]">
             {formatHeadsign(trip.headsign)}
           </span>
         </div>
@@ -438,7 +514,7 @@ const BusPanel: React.FC<BusPanelProps> = ({
       }
       initialTargetId = nextStopId ? `stop-${nextStopId}` : null;
 
-      items = trip.stops.map((st, index) => {
+      const stopItems = trip.stops.map((st, index) => {
         const s = tripDetail.stops[st.stop_id];
 
         // サーバーから渡された本当の遅延秒数を取得
@@ -449,71 +525,86 @@ const BusPanel: React.FC<BusPanelProps> = ({
         const estimatedTime = hasDelay ? addDelayToTime(st.time, delay) : null;
 
         const isHighlight = st.stop_id === selectedTrip.highlightId;
-        const isNextStop =
-          !selectedTrip.highlightId && st.stop_id === nextStopId;
-        const cls = `item-row trip-stop-row ${isPast ? "past" : "future"} ${isHighlight ? "highlight" : ""} ${isNextStop ? "next-stop" : ""}`;
 
         return (
-          <div
+          <TimelineItem
             key={index}
             id={`stop-${st.stop_id}`}
-            className={cls}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (s) onFlyToStop(s.lng, s.lat);
-            }}
+            isPast={isPast}
+            isHighlighted={isHighlight}
+            isFirst={index === 0}
+            isLast={index === trip.stops.length - 1}
+            leading={
+              <PanelTimeDisplay
+                scheduledTime={st.time}
+                estimatedTime={estimatedTime}
+                isPast={isPast}
+              />
+            }
           >
-            <div className="item-time">
-              {hasDelay ? (
-                <div className="delay-time-inline">
-                  <del className="delay-original-time">
-                    {st.time.substring(0, 5)}
-                  </del>
-                  <span className="delay-estimated-time">{estimatedTime}</span>
-                </div>
-              ) : (
-                <div>{st.time.substring(0, 5)}</div>
-              )}
-            </div>
-            <div className="item-info">
-              {s ? s.name : "..."}
-              {s?.platform && (
-                <div className="item-platform">{s.platform}番のりば</div>
-              )}
-              {isDebugMode && (
-                <div className="debug-inline-box">
-                  <DebugMeta label="stop_id" value={st.stop_id} />
-                  <DebugMeta
-                    label="stop_name_from_data"
-                    value={s?.name ?? null}
-                  />
-                  <DebugMeta
-                    label="stop_yomi_from_data"
-                    value={s?.yomi ?? null}
-                  />
-                  <DebugMeta
-                    label="platform_from_data"
-                    value={s?.platform ?? null}
-                  />
-                  <DebugMeta
-                    label="lat_lng_from_data"
-                    value={s ? [s.lat, s.lng] : null}
-                  />
-                  <DebugMeta label="scheduled" value={st.time} />
-                  <DebugMeta label="delay_seconds" value={delay} />
-                  <DebugMeta label="estimated_sec" value={estimatedSec} />
-                  <DebugMeta label="is_past" value={isPast} />
-                </div>
-              )}
-            </div>
-          </div>
+            {s ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onFlyToStop(s.lng, s.lat);
+                }}
+                className={`w-fit cursor-pointer bg-transparent p-0 text-left text-[15px] leading-snug font-bold underline decoration-muted/45 decoration-[1.5px] underline-offset-4 transition-colors hover:text-accent hover:decoration-accent focus-visible:outline-2 focus-visible:outline-focus active:opacity-75 ${
+                  isPast ? "text-muted" : "text-foreground"
+                }`}
+              >
+                {s.name}
+              </button>
+            ) : (
+              <div
+                className={`text-[15px] leading-snug font-bold ${
+                  isPast ? "text-muted" : "text-foreground"
+                }`}
+              >
+                ...
+              </div>
+            )}
+            {s?.platform && (
+              <div className="mt-0.5 text-[11px] font-medium text-muted">
+                {s.platform}番のりば
+              </div>
+            )}
+            {isDebugMode && (
+              <div className="debug-inline-box">
+                <DebugMeta label="stop_id" value={st.stop_id} />
+                <DebugMeta
+                  label="stop_name_from_data"
+                  value={s?.name ?? null}
+                />
+                <DebugMeta
+                  label="stop_yomi_from_data"
+                  value={s?.yomi ?? null}
+                />
+                <DebugMeta
+                  label="platform_from_data"
+                  value={s?.platform ?? null}
+                />
+                <DebugMeta
+                  label="lat_lng_from_data"
+                  value={s ? [s.lat, s.lng] : null}
+                />
+                <DebugMeta label="scheduled" value={st.time} />
+                <DebugMeta label="delay_seconds" value={delay} />
+                <DebugMeta label="estimated_sec" value={estimatedSec} />
+                <DebugMeta label="is_past" value={isPast} />
+              </div>
+            )}
+          </TimelineItem>
         );
       });
+
+      items = [<Timeline key="trip-timeline">{stopItems}</Timeline>];
     } else if (selectedTrip && selectedTrip.tripId.startsWith("rt_")) {
       items = [
-        <div key="nodata" className="empty-message">
-          このバスは詳細な経路・時刻表情報がありません。
-        </div>,
+        <PanelEmptyState
+          key="nodata"
+          title="このバスは詳細な経路・時刻表情報がありません。"
+        />,
       ];
     } else if (selectedTrip && !tripDetail) {
       items = [<PanelLoadingState key="loading" label="読み込み中..." />];
@@ -534,133 +625,128 @@ const BusPanel: React.FC<BusPanelProps> = ({
           (!isGrouped && stop.platform ? ` (${stop.platform}番のりば)` : "");
         office = "時刻表";
 
-        const allArrivals: Arrival[] = [];
-        Object.keys(data.timetables).forEach((rid) => {
-          Object.keys(data.timetables[rid]).forEach((tid) => {
-            const trip = data.timetables[rid][tid];
-            if (
-              !isServiceRunningToday(trip.service_id, data.calendar, data.extra)
-            )
-              return;
-            const st = trip.stops.find((s) => targetIds.includes(s.stop_id));
-            if (st) {
-              const pole = data.stops[st.stop_id];
-              // サーバーから渡された本物の遅延データを取得
-              const delay =
-                data.delays?.[rid]?.[tid] ?? stopDelays?.[rid]?.[tid] ?? 0;
-              const estimatedSec = timeToSec(st.time) + delay;
-
-              allArrivals.push({
-                time: st.time,
-                route_id: rid,
-                trip_id: tid,
-                headsign: trip.headsign,
-                via: trip.via,
-                platform: pole?.platform || "",
-                actual_stop_id: st.stop_id,
-                is_past: estimatedSec < nowSec,
-                delay_seconds: delay,
-                occupancy_status: tripOccupancyMap[tid] ?? "NO_DATA_AVAILABLE",
-              });
-            }
-          });
-        });
-
         if (timetableReadyForStop !== selectedStopId) {
           items = [
             <PanelLoadingState key="loading" label="時刻表を読み込み中..." />,
           ];
-        } else if (allArrivals.length === 0) {
-          items = [
-            <div key="empty" className="empty-message">
-              本日の運行はありません
-            </div>,
-          ];
         } else {
-          allArrivals.sort((a, b) => {
-            // 遅延を含めた到着予定時間でソートする
-            const aSec = timeToSec(a.time) + (a.delay_seconds || 0);
-            const bSec = timeToSec(b.time) + (b.delay_seconds || 0);
-            return aSec - bSec;
+          const allArrivals: Arrival[] = [];
+          Object.keys(data.timetables).forEach((rid) => {
+            Object.keys(data.timetables[rid]).forEach((tid) => {
+              const trip = data.timetables[rid][tid];
+              if (
+                !isServiceRunningToday(trip.service_id, data.calendar, data.extra)
+              )
+                return;
+              const st = trip.stops.find((s) => targetIds.includes(s.stop_id));
+              if (st) {
+                const pole = data.stops[st.stop_id];
+                // サーバーから渡された本物の遅延データを取得
+                const delay =
+                  data.delays?.[rid]?.[tid] ?? stopDelays?.[rid]?.[tid] ?? 0;
+                const estimatedSec = timeToSec(st.time) + delay;
+
+                allArrivals.push({
+                  time: st.time,
+                  route_id: rid,
+                  trip_id: tid,
+                  headsign: trip.headsign,
+                  via: trip.via,
+                  platform: pole?.platform || "",
+                  actual_stop_id: st.stop_id,
+                  is_past: estimatedSec < nowSec,
+                  delay_seconds: delay,
+                  occupancy_status: tripOccupancyMap[tid] ?? "NO_DATA_AVAILABLE",
+                });
+              }
+            });
           });
 
-          let firstFutureFound = false;
-          items = allArrivals.map((bus, idx) => {
-            const delay = bus.delay_seconds ?? 0;
-            const hasDelay = !bus.is_past && delay >= 60;
-            const estimatedTime = hasDelay
-              ? addDelayToTime(bus.time, delay)
-              : null;
-            const occupancy = getOccupancyDisplay(bus.occupancy_status);
-            const tripMeta =
-              data.timetables[bus.route_id]?.[bus.trip_id] || null;
-            const routeMeta = data.routes[bus.route_id] || null;
+          if (allArrivals.length === 0) {
+            items = [
+              <PanelEmptyState key="empty" title="本日の運行はありません" />,
+            ];
+          } else {
+            allArrivals.sort((a, b) => {
+              // 遅延を含めた到着予定時間でソートする
+              const aSec = timeToSec(a.time) + (a.delay_seconds || 0);
+              const bSec = timeToSec(b.time) + (b.delay_seconds || 0);
+              return aSec - bSec;
+            });
 
-            let isNext = false;
-            if (!bus.is_past && !firstFutureFound) {
-              firstFutureFound = true;
-              isNext = true;
-              initialTargetId = `arrival-${idx}`;
-            }
-            const cls = `item-row stop-timetable-row ${bus.is_past ? "past" : "future"} ${isNext ? "next-stop" : ""}`;
+            let firstFutureFound = false;
+            const timetableItems = allArrivals.map((bus, idx) => {
+              const delay = bus.delay_seconds ?? 0;
+              const hasDelay = !bus.is_past && delay >= 60;
+              const estimatedTime = hasDelay
+                ? addDelayToTime(bus.time, delay)
+                : null;
+              const occupancy = getOccupancyDisplay(bus.occupancy_status);
+              const tripMeta =
+                data.timetables[bus.route_id]?.[bus.trip_id] || null;
+              const routeMeta = data.routes[bus.route_id] || null;
+              const routeObj = data.routes[bus.route_id];
+              const routeNum = routeObj?.short_name || bus.route_id;
+              const badgeColor = routeObj?.color
+                ? `#${routeObj.color.replace(/^#/, "")}`
+                : "#a3d742";
+              const headsignText = formatHeadsign(bus.headsign);
 
-            return (
-              <div
-                key={idx}
-                id={`arrival-${idx}`}
-                className={cls}
-                onClick={() =>
-                  onSelectBus(
-                    bus.trip_id,
-                    bus.route_id,
-                    bus.actual_stop_id,
-                    undefined,
-                    bus.occupancy_status,
-                  )
-                }
-              >
-                <div className="item-time">
-                  {hasDelay ? (
-                    <div className="delay-time-inline">
-                      <del className="delay-original-time">
-                        {bus.time.substring(0, 5)}
-                      </del>
-                      <span className="delay-estimated-time">
-                        {estimatedTime}
-                      </span>
-                    </div>
-                  ) : (
-                    <div>{bus.time.substring(0, 5)}</div>
-                  )}
-                </div>
-                <div className="item-info item-info-with-icon">
-                  <div className="item-info-main">
-                    {bus.via && <div className="item-via">{bus.via} 経由</div>}
-                    <div className="item-destination-row">
-                      {(() => {
-                        const routeObj = data.routes[bus.route_id];
-                        const routeNum = routeObj?.short_name || bus.route_id;
-                        const badgeColor = routeObj?.color
-                          ? `#${routeObj.color.replace(/^#/, "")}`
-                          : "#a3d742";
-                        return (
-                          <span
-                            className="route-badge"
-                            style={{
-                              backgroundColor: badgeColor,
-                              color: "#1b4406",
-                            }}
-                          >
-                            {routeNum}
-                          </span>
-                        );
-                      })()}
-                      <span className="destination-name">
-                        {formatHeadsign(bus.headsign)}
+              if (!bus.is_past && !firstFutureFound) {
+                firstFutureFound = true;
+                initialTargetId = `arrival-${idx}`;
+              }
+
+              return (
+                <Card<"button">
+                  key={idx}
+                  variant="default"
+                  data-arrival-id={`arrival-${idx}`}
+                  render={(domProps) => <button type="button" {...domProps} />}
+                  onClick={() =>
+                    onSelectBus(
+                      bus.trip_id,
+                      bus.route_id,
+                      bus.actual_stop_id,
+                      undefined,
+                      bus.occupancy_status,
+                    )
+                  }
+                  className={`w-full cursor-pointer flex-row items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition-[transform,background-color] duration-150 outline-none select-none focus-visible:status-focused active:scale-[0.98] ${
+                    bus.is_past
+                      ? "bg-surface/40 hover:bg-surface/65"
+                      : "bg-surface/65 hover:bg-surface/85"
+                  }`}
+                >
+                  <div className="w-14 shrink-0">
+                    <PanelTimeDisplay
+                      scheduledTime={bus.time}
+                      estimatedTime={estimatedTime}
+                      isPast={bus.is_past}
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    {bus.via && (
+                      <div className="mb-0.5 text-xs text-muted">
+                        {bus.via} 経由
+                      </div>
+                    )}
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <RouteBadgeChip
+                        label={routeNum}
+                        color={badgeColor}
+                        size="row"
+                      />
+                      <span
+                        className={`text-[15px] leading-snug font-bold whitespace-normal [word-break:auto-phrase] ${
+                          bus.is_past ? "text-muted" : "text-foreground"
+                        }`}
+                      >
+                        {headsignText}
                       </span>
                     </div>
                     {bus.platform && (
-                      <div className="item-platform">
+                      <div className="mt-0.5 text-[11px] font-medium text-muted">
                         {bus.platform}番のりば
                       </div>
                     )}
@@ -726,16 +812,26 @@ const BusPanel: React.FC<BusPanelProps> = ({
                     )}
                   </div>
                   <span
-                    className={`material-icons-outlined item-occupancy-mini ${occupancy.toneClass}`}
+                    className={`material-icons-outlined shrink-0 text-[18px] leading-none ${occupancy.iconColorClass}`}
                     title={occupancy.label}
                     aria-label={occupancy.label}
                   >
                     {occupancy.icon}
                   </span>
-                </div>
-              </div>
-            );
-          });
+                </Card>
+              );
+            });
+
+            items = [
+              <div
+                key="stop-timetable"
+                aria-label="発車予定時刻表"
+                className="flex flex-col gap-2 px-3 py-2.5"
+              >
+                {timetableItems}
+              </div>,
+            ];
+          }
         }
       }
     }
@@ -784,14 +880,25 @@ const BusPanel: React.FC<BusPanelProps> = ({
       // （キャッシュデータで誤スクロールしてしまう問題の回避）
       if (selectedStopId && timetableReadyForStop !== selectedStopId) return;
 
-      const el = document.getElementById(panelData.initialTargetId);
+      const el =
+        document.getElementById(panelData.initialTargetId) ??
+        contentRef.current.querySelector<HTMLElement>(
+          `[data-arrival-id="${panelData.initialTargetId}"]`,
+        );
       if (el) {
         const parent = contentRef.current;
-        const currentRowHeight = el.getBoundingClientRect().height || 44;
+        if (parent.clientHeight === 0) return;
+
+        const parentRect = parent.getBoundingClientRect();
+        const scaleY = parentRect.height / parent.clientHeight || 1;
+        const rowRect = el.getBoundingClientRect();
+        const currentRowHeight = rowRect.height / scaleY || 44;
         const prev = el.previousElementSibling as HTMLElement | null;
-        const prevRowHeight = prev?.classList.contains("item-row")
-          ? prev.getBoundingClientRect().height
-          : currentRowHeight;
+        const prevRowHeight =
+          prev?.hasAttribute("data-timeline-item") ||
+          prev?.hasAttribute("data-arrival-id")
+            ? prev.getBoundingClientRect().height / scaleY
+            : currentRowHeight;
 
         // ヘッダー直下で「1つ前の行」が見える位置に固定する。
         // 比率ではなく行高ベースにすることで、端末差によるズレを抑える。
@@ -800,9 +907,8 @@ const BusPanel: React.FC<BusPanelProps> = ({
 
         // offsetTop は環境によって基準親がずれて計算誤差が出ることがあるため、
         // panel-content の見えている領域基準で相対位置を算出する。
-        const parentRect = parent.getBoundingClientRect();
-        const rowRect = el.getBoundingClientRect();
-        const relativeTop = parent.scrollTop + (rowRect.top - parentRect.top);
+        const relativeTop =
+          parent.scrollTop + (rowRect.top - parentRect.top) / scaleY;
 
         const nextScrollTop = relativeTop - desiredTop;
         const maxScrollTop = Math.max(
@@ -811,12 +917,9 @@ const BusPanel: React.FC<BusPanelProps> = ({
         );
         const clamped = Math.max(0, Math.min(nextScrollTop, maxScrollTop));
 
-        // Instagram内ブラウザ等で開閉直後に高さが不安定な場合があるため、
-        // 1フレーム遅らせて最終レイアウト後にスクロールする。
-        requestAnimationFrame(() => {
-          parent.scrollTop = clamped;
-          lastSelectedKeyRef.current = currentSelectionKey;
-        });
+        // 描画前（useLayoutEffect内）で即座にスクロールし、白画面や上端からのジャンプを防ぐ
+        parent.scrollTop = clamped;
+        lastSelectedKeyRef.current = currentSelectionKey;
       }
     }
   }, [
@@ -830,62 +933,53 @@ const BusPanel: React.FC<BusPanelProps> = ({
   const isOpen = !!(selectedStopId || selectedTrip);
 
   return (
-    <div id="bottom-panel" className={isOpen ? "open" : ""}>
-      <button
-        className="close-btn"
-        onClick={(e) => {
-          e.stopPropagation();
-          onClose();
-        }}
-        title="閉じる"
-      >
-        <span className="material-icons-outlined" aria-hidden>
-          close
-        </span>
-      </button>
-      <div className="panel-header">
-        {panelData.via && <div className="panel-via">{panelData.via}</div>}
-        <div className="panel-title-row">
-          <div className="panel-title">{panelData.title}</div>
+    <Surface
+      id="bottom-panel"
+      variant="default"
+      className={`glass-surface-lg absolute z-[6000] flex h-[60%] max-h-[80%] flex-col overflow-hidden rounded-3xl transition-[opacity,transform] duration-350 ease-[cubic-bezier(0.19,1,0.22,1)] md:top-20 md:bottom-auto md:left-5 md:z-[8000] md:max-h-[calc(100%-120px)] md:w-[calc(100%-40px)] md:max-w-[400px] max-md:bottom-5 max-md:left-2.5 max-md:w-[calc(100%-20px)] ${
+        isOpen
+          ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
+          : "pointer-events-none translate-y-6 scale-96 opacity-0"
+      }`}
+    >
+      <CloseButton
+        aria-label="閉じる"
+        onPress={onClose}
+        className="absolute top-3 right-3 z-20"
+      />
+      <div className="relative border-b border-separator px-6 pt-5 pb-3.5">
+        {panelData.via && (
+          <div className="mb-1 pr-8 text-[11px] font-medium tracking-[0.02em] text-muted uppercase">
+            {panelData.via}
+          </div>
+        )}
+        <div className="flex items-baseline justify-between gap-2.5 pr-8">
+          <div className="text-xl leading-tight font-extrabold tracking-[-0.02em] whitespace-normal text-foreground [word-break:auto-phrase]">
+            {panelData.title}
+          </div>
         </div>
         {panelData.office && (
-          <div className="office-info">{panelData.office}</div>
+          <div className="mt-1 text-xs font-semibold text-muted">
+            {panelData.office}
+          </div>
         )}
         {selectedTrip && (
-          <div
-            className="panel-status-badges"
-            style={{
-              display: "flex",
-              gap: "8px",
-              flexWrap: "wrap",
-              alignItems: "center",
-            }}
-          >
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             {panelData.occupancyInfo && (
-              <div
-                className={`occupancy-info ${panelData.occupancyInfo.toneClass}`}
-              >
-                <span
-                  className="material-icons-outlined occupancy-icon"
-                  aria-hidden
-                >
+              <Chip variant="soft" color={panelData.occupancyInfo.chipColor}>
+                <span className="material-icons-outlined text-[14px]" aria-hidden>
                   {panelData.occupancyInfo.icon}
                 </span>
-                <span className="occupancy-text">
-                  {panelData.occupancyInfo.label}
-                </span>
-              </div>
+                <Chip.Label>{panelData.occupancyInfo.label}</Chip.Label>
+              </Chip>
             )}
             {panelData.speedText && (
-              <div className="speed-info">
-                <span
-                  className="material-icons-outlined speed-icon"
-                  aria-hidden
-                >
+              <Chip variant="soft" color="default">
+                <span className="material-icons-outlined text-[14px]" aria-hidden>
                   speed
                 </span>
-                <span className="speed-text">{panelData.speedText}</span>
-              </div>
+                <Chip.Label>{panelData.speedText}</Chip.Label>
+              </Chip>
             )}
           </div>
         )}
@@ -974,10 +1068,14 @@ const BusPanel: React.FC<BusPanelProps> = ({
           </details>
         )}
       </div>
-      <div className="panel-content" ref={contentRef}>
+      <ScrollShadow
+        ref={contentRef}
+        size={28}
+        className="panel-content min-h-0 flex-1 overflow-y-auto"
+      >
         {panelData.items}
-      </div>
-    </div>
+      </ScrollShadow>
+    </Surface>
   );
 };
 
