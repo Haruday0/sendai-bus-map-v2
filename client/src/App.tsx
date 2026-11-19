@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useCallback,
+} from "react";
 import type * as maplibregl from "maplibre-gl";
 import {
   Button,
@@ -427,6 +433,11 @@ function App() {
       document.body.classList.remove("is-searching");
     }
   }, [isSearching]);
+
+  // モーダル展開の初回描画前から地図上マーカーを隠し、開き途中の透過映り込みを防ぐ
+  useLayoutEffect(() => {
+    document.body.classList.toggle("modal-open", isAboutOpen);
+  }, [isAboutOpen]);
 
   useEffect(() => {
     const syncDebugState = () => {

@@ -193,3 +193,12 @@
   border: 2.5px solid #ffffff;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
 }
+
+/* モーダル表示中は地図上の DOM マーカーを即時非表示にする */
+body.modal-open .bus-marker-container,
+body.modal-open .stop-marker-container,
+body.modal-open .user-location-marker {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
