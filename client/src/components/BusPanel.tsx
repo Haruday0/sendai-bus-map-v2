@@ -16,7 +16,13 @@ import {
   Spinner,
   Surface,
 } from "@heroui/react";
-import type { AppData, PanelTrip, Arrival, TripDetailResponse } from "../types";
+import type {
+  AppData,
+  LiveTripTelemetry,
+  PanelTrip,
+  Arrival,
+  TripDetailResponse,
+} from "../types";
 import {
   formatHeadsign,
   isServiceRunningToday,
@@ -62,7 +68,7 @@ const PanelTimeDisplay: React.FC<{
   estimatedTime: string | null;
   isPast: boolean;
 }> = ({ scheduledTime, estimatedTime, isPast }) => {
-  const timeText = scheduledTime.substring(0, 5);
+  const timeText = scheduledTime ? scheduledTime.substring(0, 5) : "--:--";
   if (estimatedTime) {
     return (
       <div className="relative flex min-h-10 w-full items-center justify-center [font-feature-settings:'tnum']">
@@ -79,7 +85,7 @@ const PanelTimeDisplay: React.FC<{
     <div className="flex min-h-10 w-full items-center justify-center [font-feature-settings:'tnum']">
       <span
         className={`text-[16px] leading-none font-bold tracking-[-0.03em] whitespace-nowrap ${
-          isPast ? "text-muted" : "text-foreground"
+          !scheduledTime || isPast ? "text-muted" : "text-foreground"
         }`}
       >
         {timeText}
@@ -92,6 +98,7 @@ interface BusPanelProps {
   data: AppData;
   selectedStopId: string | null;
   selectedTrip: PanelTrip | null;
+  liveTripTelemetry?: LiveTripTelemetry | null;
   tripDetail: TripDetailResponse | null;
   isDebugMode: boolean;
   stopDelays: Record<string, Record<string, number>>;
@@ -173,6 +180,7 @@ const BusPanel: React.FC<BusPanelProps> = ({
   data,
   selectedStopId,
   selectedTrip,
+  liveTripTelemetry,
   tripDetail,
   isDebugMode,
   stopDelays,
@@ -249,6 +257,28 @@ const BusPanel: React.FC<BusPanelProps> = ({
     };
   }, [selectedStopId, selectedTrip]);
 
+  const liveSpeedKmh =
+    selectedTrip && liveTripTelemetry?.tripId === selectedTrip.tripId
+      ? (liveTripTelemetry.speedKmh ?? selectedTrip.speedKmh)
+      : selectedTrip?.speedKmh;
+  const liveOccupancyStatus =
+    selectedTrip && liveTripTelemetry?.tripId === selectedTrip.tripId
+      ? (liveTripTelemetry.occupancyStatus ?? selectedTrip.occupancyStatus)
+      : selectedTrip?.occupancyStatus;
+  const liveHeadsign =
+    selectedTrip && liveTripTelemetry?.tripId === selectedTrip.tripId
+      ? (liveTripTelemetry.headsign || selectedTrip.headsign || "")
+      : (selectedTrip?.headsign ?? "");
+  const liveNextStopId =
+    selectedTrip && liveTripTelemetry?.tripId === selectedTrip.tripId
+      ? (liveTripTelemetry.nextStopId ?? selectedTrip.nextStopId)
+      : selectedTrip?.nextStopId;
+  const liveNextStopName =
+    (selectedTrip && liveTripTelemetry?.tripId === selectedTrip.tripId
+      ? (liveTripTelemetry.nextStopName ?? selectedTrip.nextStopName)
+      : selectedTrip?.nextStopName) ||
+    (liveNextStopId ? data.stops[liveNextStopId]?.name : undefined);
+
   const debugSummaryJson = useMemo(() => {
     if (!isDebugMode) return "";
     const todayYmd = formatTodayYmd();
@@ -261,8 +291,11 @@ const BusPanel: React.FC<BusPanelProps> = ({
           route_id: selectedTrip.routeId,
           trip_id: selectedTrip.tripId,
           highlight_id: selectedTrip.highlightId,
-          speed_kmh: selectedTrip.speedKmh ?? null,
-          occupancy_status: selectedTrip.occupancyStatus ?? null,
+          headsign: liveHeadsign || null,
+          next_stop_id: liveNextStopId ?? null,
+          next_stop_name: liveNextStopName ?? null,
+          speed_kmh: liveSpeedKmh ?? null,
+          occupancy_status: liveOccupancyStatus ?? null,
           trip_delay: tripDetail?.trip_delay ?? 0,
           stops_count: tripDetail?.trip?.stops?.length ?? 0,
           service_id: serviceId,
@@ -300,6 +333,11 @@ const BusPanel: React.FC<BusPanelProps> = ({
     isDebugMode,
     selectedTrip,
     selectedStopId,
+    liveHeadsign,
+    liveNextStopId,
+    liveNextStopName,
+    liveSpeedKmh,
+    liveOccupancyStatus,
     tripDetail,
     data.extra.offices,
     data.calendar,
@@ -335,29 +373,49 @@ const BusPanel: React.FC<BusPanelProps> = ({
           ? `#${data.routes[tripDetail.route_id].color.replace(/^#/, "")}`
           : "#a3d742";
       via = trip.via ? `${trip.via} 経由` : "";
+      const resolvedHeadsign = trip.headsign || liveHeadsign;
       title = (
         <div className="flex w-full flex-nowrap items-center gap-2">
           <RouteBadgeChip label={routeName} color={routeColor} size="header" />
-          <span className="leading-snug whitespace-normal [word-break:auto-phrase]">
-            {formatHeadsign(trip.headsign)}
+          <span
+            className={`leading-snug whitespace-normal [word-break:auto-phrase] ${
+              resolvedHeadsign ? "text-foreground" : "text-muted"
+            }`}
+          >
+            {resolvedHeadsign
+              ? formatHeadsign(resolvedHeadsign)
+              : "行先情報なし"}
           </span>
         </div>
       );
       office = tripDetail.office_name || "";
-      if (typeof selectedTrip.speedKmh === "number") {
-        speedText = `${Math.floor(selectedTrip.speedKmh)} km/h`;
+      if (typeof liveSpeedKmh === "number") {
+        speedText = `${Math.floor(liveSpeedKmh)} km/h`;
       }
-      occupancyInfo = getOccupancyDisplay(selectedTrip.occupancyStatus);
+      occupancyInfo = getOccupancyDisplay(liveOccupancyStatus);
+
+      const isRealtimeOnlyTrip = selectedTrip.tripId.startsWith("rt_");
+      const nextStopIndex =
+        isRealtimeOnlyTrip && liveNextStopId
+          ? trip.stops.findIndex((st) => st.stop_id === liveNextStopId)
+          : -1;
 
       // 遅延を加味した nextStopId の特定
       let nextStopId = selectedTrip.highlightId;
       if (!selectedTrip.highlightId) {
-        const next = trip.stops.find((st) => {
-          const d = tripDetail.delays?.[st.stop_id] ?? 0;
-          const estimatedSec = timeToSec(st.time) + d;
-          return estimatedSec >= nowSec;
-        });
-        if (next) nextStopId = next.stop_id;
+        if (isRealtimeOnlyTrip) {
+          nextStopId =
+            (nextStopIndex >= 0 ? liveNextStopId : undefined) ??
+            trip.stops[0]?.stop_id ??
+            null;
+        } else {
+          const next = trip.stops.find((st) => {
+            const d = tripDetail.delays?.[st.stop_id] ?? 0;
+            const estimatedSec = timeToSec(st.time) + d;
+            return estimatedSec >= nowSec;
+          });
+          if (next) nextStopId = next.stop_id;
+        }
       }
       initialTargetId = nextStopId ? `stop-${nextStopId}` : null;
 
@@ -365,11 +423,18 @@ const BusPanel: React.FC<BusPanelProps> = ({
         const s = tripDetail.stops[st.stop_id];
 
         // サーバーから渡された本当の遅延秒数を取得
-        const delay = tripDetail.delays?.[st.stop_id] ?? 0;
-        const estimatedSec = timeToSec(st.time) + delay;
-        const isPast = estimatedSec < nowSec;
-        const hasDelay = !isPast && delay >= 60; // 1分以上なら遅延扱い
-        const estimatedTime = hasDelay ? addDelayToTime(st.time, delay) : null;
+        const delay = isRealtimeOnlyTrip
+          ? 0
+          : (tripDetail.delays?.[st.stop_id] ?? 0);
+        const estimatedSec = st.time ? timeToSec(st.time) + delay : 0;
+        const isPast = isRealtimeOnlyTrip
+          ? nextStopIndex >= 0
+            ? index < nextStopIndex
+            : false
+          : estimatedSec < nowSec;
+        const hasDelay = !isRealtimeOnlyTrip && !isPast && delay >= 60; // 1分以上なら遅延扱い
+        const estimatedTime =
+          hasDelay && st.time ? addDelayToTime(st.time, delay) : null;
 
         const isHighlight = st.stop_id === selectedTrip.highlightId;
 
@@ -427,11 +492,60 @@ const BusPanel: React.FC<BusPanelProps> = ({
 
       items = [<Timeline key="trip-timeline">{stopItems}</Timeline>];
     } else if (selectedTrip && selectedTrip.tripId.startsWith("rt_")) {
+      const routeObj = data.routes[selectedTrip.routeId];
+      const routeName = routeObj?.short_name || selectedTrip.routeId;
+      const routeColor = routeObj?.color
+        ? `#${routeObj.color.replace(/^#/, "")}`
+        : "#a3d742";
+      const nextStopObj = liveNextStopId
+        ? data.stops[liveNextStopId]
+        : undefined;
+      const headsignLabel = liveHeadsign
+        ? formatHeadsign(liveHeadsign)
+        : "行先情報なし";
+      title = (
+        <div className="flex w-full flex-nowrap items-center gap-2">
+          <RouteBadgeChip label={routeName} color={routeColor} size="header" />
+          <span
+            className={`leading-snug whitespace-normal [word-break:auto-phrase] ${
+              liveHeadsign ? "text-foreground" : "text-muted"
+            }`}
+          >
+            {headsignLabel}
+          </span>
+        </div>
+      );
+      if (typeof liveSpeedKmh === "number") {
+        speedText = `${Math.floor(liveSpeedKmh)} km/h`;
+      }
+      occupancyInfo = getOccupancyDisplay(liveOccupancyStatus);
       items = [
-        <PanelEmptyState
-          key="nodata"
-          title="このバスは詳細な経路・時刻表情報がありません。"
-        />,
+        <div key="rt-body" className="flex flex-col gap-2 px-3 py-2.5">
+          {liveNextStopName && (
+            <Card
+              variant="default"
+              className="gap-1 rounded-2xl bg-surface/65 px-3.5 py-2.5 shadow-surface"
+            >
+              <span className="text-[11px] font-semibold text-muted">
+                次のバス停
+              </span>
+              {nextStopObj ? (
+                <button
+                  type="button"
+                  onClick={() => onFlyToStop(nextStopObj.lng, nextStopObj.lat)}
+                  className="w-fit cursor-pointer bg-transparent p-0 text-left text-[15px] leading-snug font-bold text-foreground underline decoration-muted/45 decoration-[1.5px] underline-offset-4 transition-colors hover:text-accent hover:decoration-accent focus-visible:outline-2 focus-visible:outline-focus active:opacity-75"
+                >
+                  {liveNextStopName}
+                </button>
+              ) : (
+                <span className="text-[15px] leading-snug font-bold text-foreground">
+                  {liveNextStopName}
+                </span>
+              )}
+            </Card>
+          )}
+          <PanelEmptyState title="このバスの経路や時刻表の情報がありません。" />
+        </div>,
       ];
     } else if (selectedTrip && !tripDetail) {
       items = [<PanelLoadingState key="loading" label="読み込み中..." />];
@@ -619,6 +733,11 @@ const BusPanel: React.FC<BusPanelProps> = ({
     data,
     selectedStopId,
     selectedTrip,
+    liveHeadsign,
+    liveNextStopId,
+    liveNextStopName,
+    liveSpeedKmh,
+    liveOccupancyStatus,
     tripDetail,
     isDebugMode,
     stopDelays,
@@ -748,7 +867,9 @@ const BusPanel: React.FC<BusPanelProps> = ({
                 <span className="material-icons-outlined text-[14px]" aria-hidden>
                   speed
                 </span>
-                <Chip.Label>{panelData.speedText}</Chip.Label>
+                <Chip.Label className="tabular-nums">
+                  {panelData.speedText}
+                </Chip.Label>
               </Chip>
             )}
           </div>

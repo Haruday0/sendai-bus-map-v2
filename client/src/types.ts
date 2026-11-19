@@ -121,6 +121,19 @@ export interface PanelTrip {
   highlightId: string | null;
   speedKmh?: number;
   occupancyStatus?: string;
+  headsign?: string;
+  nextStopId?: string;
+  nextStopName?: string;
+}
+
+/** 選択中の便に関する最新のリアルタイム情報 */
+export interface LiveTripTelemetry {
+  tripId: string;
+  speedKmh?: number;
+  occupancyStatus?: string;
+  headsign?: string;
+  nextStopId?: string;
+  nextStopName?: string;
 }
 
 /** バス停に到着する便の情報 */
@@ -151,6 +164,7 @@ export interface BusPosition {
   color: string;
   delay_seconds?: number;
   next_stop_id?: string;
+  next_stop_name?: string;
 }
 
 /** サーバーから返される便詳細情報（全停車バス停情報を含む） */

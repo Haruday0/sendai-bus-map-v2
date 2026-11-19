@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -57,6 +58,22 @@ type TripRealtimeUpdate struct {
 	VehicleID  string           `json:"vehicle_id,omitempty"`
 	TripDelay  int64            `json:"trip_delay,omitempty"`  // 全体の遅延秒数
 	StopDelays map[string]int64 `json:"stop_delays,omitempty"` // stop_id -> delay_seconds のマップ
+}
+
+// AddedTripUpdate は trip_id が空の ADDED 便に対する車両IDベースのリアルタイム予測情報
+type AddedTripUpdate struct {
+	RouteID        string
+	VehicleID      string
+	StopIDs        []string
+	PredictedTimes map[string]string
+}
+
+type routePatternInfo struct {
+	PatternKey string
+	Headsign   string
+	OfficeID   string
+	Via        string
+	StopIDs    []string
 }
 
 // TimetablesData は route_id → trip_id → TripInfo のマップ
@@ -153,6 +170,10 @@ var (
 	routesCache     RoutesData
 	jstLocation     = loadJSTLocation()
 
+	staticRouteUniqueHeadsign = make(map[string]string)
+	staticRouteStopHeadsign   = make(map[string]map[string]string)
+	staticRoutePatterns       = make(map[string][]routePatternInfo)
+
 	vehicleCache = struct {
 		mu        sync.Mutex
 		fetchedAt time.Time
@@ -162,13 +183,15 @@ var (
 	}{}
 
 	tripUpdateCache = struct {
-		mu        sync.Mutex
-		fetchedAt time.Time
-		updates   map[string]*TripRealtimeUpdate // trip_id -> TripRealtimeUpdate
-		fetching  bool
-		fetchDone chan struct{}
+		mu             sync.Mutex
+		fetchedAt      time.Time
+		updates        map[string]*TripRealtimeUpdate // trip_id -> TripRealtimeUpdate
+		addedByVehicle map[string]*AddedTripUpdate    // vehicle_id -> AddedTripUpdate
+		fetching       bool
+		fetchDone      chan struct{}
 	}{
-		updates: make(map[string]*TripRealtimeUpdate),
+		updates:        make(map[string]*TripRealtimeUpdate),
+		addedByVehicle: make(map[string]*AddedTripUpdate),
 	}
 )
 
@@ -388,6 +411,12 @@ func fetchVehiclePositionsFromODPT() ([]BusPosition, error) {
 		if vehicle.GetVehicle() != nil {
 			vehicleID = vehicle.GetVehicle().GetId()
 		}
+		nextStopName := ""
+		if nextStopID != "" {
+			if st, ok := stopsCache[nextStopID]; ok {
+				nextStopName = st.Name
+			}
+		}
 		occupancyStatus := vehicle.GetOccupancyStatus().String()
 		if occupancyStatus == "" || occupancyStatus == "OCCUPANCY_STATUS_UNKNOWN" {
 			occupancyStatus = "NO_DATA_AVAILABLE"
@@ -404,6 +433,7 @@ func fetchVehiclePositionsFromODPT() ([]BusPosition, error) {
 			Color:                color,
 			DelaySeconds:         delaySeconds,
 			NextStopID:           nextStopID,
+			NextStopName:         nextStopName,
 			ScheduledArrivalTime: scheduledArrivalTime,
 			EstimatedArrivalTime: estimatedArrivalTime,
 			VehicleID:            vehicleID,
@@ -573,7 +603,151 @@ func loadAllData() error {
 	if err := json.Unmarshal(file, &routesCache); err != nil {
 		return err
 	}
+	buildRouteHeadsignIndexes()
 	return nil
+}
+
+func buildRouteHeadsignIndexes() {
+	uniqueHeadsign := make(map[string]string)
+	stopHeadsign := make(map[string]map[string]string)
+	patternsByRoute := make(map[string][]routePatternInfo)
+
+	for routeID, trips := range timetablesCache {
+		routeHS := make(map[string]struct{})
+		stopHS := make(map[string]map[string]struct{})
+		seenPatterns := make(map[string]struct{})
+
+		for _, trip := range trips {
+			if len(trip.Stops) >= 2 {
+				stopIDs := make([]string, len(trip.Stops))
+				for i, st := range trip.Stops {
+					stopIDs[i] = st.StopID
+				}
+				pk := strings.Join(stopIDs, "|")
+				if _, exists := seenPatterns[pk]; !exists {
+					seenPatterns[pk] = struct{}{}
+					patternsByRoute[routeID] = append(patternsByRoute[routeID], routePatternInfo{
+						PatternKey: pk,
+						Headsign:   trip.Headsign,
+						OfficeID:   trip.OfficeID,
+						Via:        trip.Via,
+						StopIDs:    stopIDs,
+					})
+				}
+			}
+
+			if trip.Headsign == "" {
+				continue
+			}
+			routeHS[trip.Headsign] = struct{}{}
+			for _, st := range trip.Stops {
+				if st.StopID == "" {
+					continue
+				}
+				if stopHS[st.StopID] == nil {
+					stopHS[st.StopID] = make(map[string]struct{})
+				}
+				stopHS[st.StopID][trip.Headsign] = struct{}{}
+			}
+		}
+
+		if len(routeHS) == 1 {
+			for hs := range routeHS {
+				uniqueHeadsign[routeID] = hs
+			}
+		} else if len(routeHS) > 1 {
+			byStop := make(map[string]string)
+			for stopID, hsSet := range stopHS {
+				if len(hsSet) == 1 {
+					for hs := range hsSet {
+						byStop[stopID] = hs
+					}
+				}
+			}
+			if len(byStop) > 0 {
+				stopHeadsign[routeID] = byStop
+			}
+		}
+	}
+
+	staticRouteUniqueHeadsign = uniqueHeadsign
+	staticRouteStopHeadsign = stopHeadsign
+	staticRoutePatterns = patternsByRoute
+}
+
+func containsStopID(stopIDs []string, target string) bool {
+	for _, sid := range stopIDs {
+		if sid == target {
+			return true
+		}
+	}
+	return false
+}
+
+func isOrderedSubsequence(haystack, needle []string) bool {
+	if len(needle) == 0 {
+		return true
+	}
+	ni := 0
+	for _, s := range haystack {
+		if s == needle[ni] {
+			ni++
+			if ni == len(needle) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func inferPatternFromTimetables(routeID, nextStopID string, remainingStops []string) (routePatternInfo, bool) {
+	cands := staticRoutePatterns[routeID]
+	if len(cands) == 0 {
+		return routePatternInfo{}, false
+	}
+
+	if len(cands) > 1 && nextStopID != "" {
+		filtered := make([]routePatternInfo, 0, len(cands))
+		for _, p := range cands {
+			if containsStopID(p.StopIDs, nextStopID) {
+				filtered = append(filtered, p)
+			}
+		}
+		if len(filtered) > 0 {
+			cands = filtered
+		}
+	}
+
+	if len(cands) > 1 && len(remainingStops) > 0 {
+		filtered := make([]routePatternInfo, 0, len(cands))
+		for _, p := range cands {
+			if isOrderedSubsequence(p.StopIDs, remainingStops) {
+				filtered = append(filtered, p)
+			}
+		}
+		if len(filtered) > 0 {
+			cands = filtered
+		}
+	}
+
+	if len(cands) == 1 {
+		return cands[0], true
+	}
+	return routePatternInfo{}, false
+}
+
+func inferHeadsignFromTimetables(routeID, nextStopID string) string {
+	if hs, ok := staticRouteUniqueHeadsign[routeID]; ok && hs != "" {
+		return hs
+	}
+	if nextStopID != "" {
+		if byStop, ok := staticRouteStopHeadsign[routeID]; ok {
+			if hs, ok := byStop[nextStopID]; ok && hs != "" {
+				return hs
+			}
+		}
+	}
+	return ""
 }
 
 func filterStopsByBounds(minLat, maxLat, minLng, maxLng float64) map[string]StopInfo {
@@ -753,15 +927,15 @@ func calculateAllBusPositionsAt(nowSec int) []BusPosition {
 }
 
 // リアルタイム遅延情報（TripUpdate）を取得してマップを生成
-func fetchTripUpdatesFromODPT() (map[string]*TripRealtimeUpdate, error) {
+func fetchTripUpdatesFromODPT() (map[string]*TripRealtimeUpdate, map[string]*AddedTripUpdate, error) {
 	token := getODPTAccessToken()
 	if token == "" {
-		return make(map[string]*TripRealtimeUpdate), fmt.Errorf("ODPT access token is missing")
+		return make(map[string]*TripRealtimeUpdate), make(map[string]*AddedTripUpdate), fmt.Errorf("ODPT access token is missing")
 	}
 
 	u, err := url.Parse(odptTripUpdateRealtimeURL)
 	if err != nil {
-		return make(map[string]*TripRealtimeUpdate), err
+		return make(map[string]*TripRealtimeUpdate), make(map[string]*AddedTripUpdate), err
 	}
 
 	q := u.Query()
@@ -770,41 +944,87 @@ func fetchTripUpdatesFromODPT() (map[string]*TripRealtimeUpdate, error) {
 
 	res, err := odptHTTPClient.Get(u.String())
 	if err != nil {
-		return make(map[string]*TripRealtimeUpdate), err
+		return make(map[string]*TripRealtimeUpdate), make(map[string]*AddedTripUpdate), err
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return make(map[string]*TripRealtimeUpdate), fmt.Errorf("odpt trip_update fetch failed: status=%d", res.StatusCode)
+		return make(map[string]*TripRealtimeUpdate), make(map[string]*AddedTripUpdate), fmt.Errorf("odpt trip_update fetch failed: status=%d", res.StatusCode)
 	}
 
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
-		return make(map[string]*TripRealtimeUpdate), err
+		return make(map[string]*TripRealtimeUpdate), make(map[string]*AddedTripUpdate), err
 	}
 
 	feed := &gtfs.FeedMessage{}
 	if err := proto.Unmarshal(body, feed); err != nil {
-		return make(map[string]*TripRealtimeUpdate), fmt.Errorf("failed to parse payload: %w", err)
+		return make(map[string]*TripRealtimeUpdate), make(map[string]*AddedTripUpdate), fmt.Errorf("failed to parse payload: %w", err)
 	}
 
 	updates := make(map[string]*TripRealtimeUpdate)
+	addedByVehicle := make(map[string]*AddedTripUpdate)
 	for _, entity := range feed.Entity {
 		tu := entity.GetTripUpdate()
 		if tu == nil || tu.GetTrip() == nil {
 			continue
 		}
 
-		tripID := tu.GetTrip().GetTripId()
-		if tripID == "" {
-			continue
-		}
-
-		headsign := ""
 		vehicleID := ""
 		if tu.GetVehicle() != nil {
 			vehicleID = tu.GetVehicle().GetId()
 		}
+
+		tripID := tu.GetTrip().GetTripId()
+		if tripID == "" {
+			if vehicleID != "" {
+				type seqStop struct {
+					seq    uint32
+					stopID string
+					ts     int64
+				}
+				var list []seqStop
+				for _, stu := range tu.GetStopTimeUpdate() {
+					stopID := stu.GetStopId()
+					if stopID == "" {
+						continue
+					}
+					var ts int64
+					if stu.Arrival != nil && stu.Arrival.Time != nil && *stu.Arrival.Time > 0 {
+						ts = *stu.Arrival.Time
+					} else if stu.Departure != nil && stu.Departure.Time != nil && *stu.Departure.Time > 0 {
+						ts = *stu.Departure.Time
+					}
+					list = append(list, seqStop{
+						seq:    stu.GetStopSequence(),
+						stopID: stopID,
+						ts:     ts,
+					})
+				}
+				sort.SliceStable(list, func(i, j int) bool {
+					return list[i].seq < list[j].seq
+				})
+				if len(list) > 0 {
+					stopIDs := make([]string, 0, len(list))
+					predTimes := make(map[string]string)
+					for _, item := range list {
+						stopIDs = append(stopIDs, item.stopID)
+						if item.ts > 0 {
+							predTimes[item.stopID] = time.Unix(item.ts, 0).In(jstLocation).Format("15:04:05")
+						}
+					}
+					addedByVehicle[vehicleID] = &AddedTripUpdate{
+						RouteID:        tu.GetTrip().GetRouteId(),
+						VehicleID:      vehicleID,
+						StopIDs:        stopIDs,
+						PredictedTimes: predTimes,
+					}
+				}
+			}
+			continue
+		}
+
+		headsign := ""
 
 		delayMap := make(map[string]int64)
 		var lastSeq uint32
@@ -852,10 +1072,10 @@ func fetchTripUpdatesFromODPT() (map[string]*TripRealtimeUpdate, error) {
 			StopDelays: delayMap,
 		}
 	}
-	return updates, nil
+	return updates, addedByVehicle, nil
 }
 
-func getRealtimeTripUpdates() (map[string]*TripRealtimeUpdate, error) {
+func getRealtimeTripUpdatesAll() (map[string]*TripRealtimeUpdate, map[string]*AddedTripUpdate, error) {
 	for {
 		now := time.Now()
 		if realtimeCacheTTL <= 0 {
@@ -863,13 +1083,17 @@ func getRealtimeTripUpdates() (map[string]*TripRealtimeUpdate, error) {
 		}
 
 		tripUpdateCache.mu.Lock()
-		if now.Sub(tripUpdateCache.fetchedAt) <= realtimeCacheTTL && len(tripUpdateCache.updates) > 0 {
-			cached := make(map[string]*TripRealtimeUpdate)
+		if now.Sub(tripUpdateCache.fetchedAt) <= realtimeCacheTTL && (len(tripUpdateCache.updates) > 0 || len(tripUpdateCache.addedByVehicle) > 0) {
+			cached := make(map[string]*TripRealtimeUpdate, len(tripUpdateCache.updates))
 			for k, v := range tripUpdateCache.updates {
 				cached[k] = v
 			}
+			cachedAdded := make(map[string]*AddedTripUpdate, len(tripUpdateCache.addedByVehicle))
+			for k, v := range tripUpdateCache.addedByVehicle {
+				cachedAdded[k] = v
+			}
 			tripUpdateCache.mu.Unlock()
-			return cached, nil
+			return cached, cachedAdded, nil
 		}
 
 		if tripUpdateCache.fetching {
@@ -883,12 +1107,13 @@ func getRealtimeTripUpdates() (map[string]*TripRealtimeUpdate, error) {
 		tripUpdateCache.fetchDone = make(chan struct{})
 		tripUpdateCache.mu.Unlock()
 
-		updates, err := fetchTripUpdatesFromODPT()
+		updates, addedByVehicle, err := fetchTripUpdatesFromODPT()
 
 		tripUpdateCache.mu.Lock()
 		if err == nil {
 			tripUpdateCache.fetchedAt = time.Now()
 			tripUpdateCache.updates = updates
+			tripUpdateCache.addedByVehicle = addedByVehicle
 		}
 		tripUpdateCache.fetching = false
 		close(tripUpdateCache.fetchDone)
@@ -896,10 +1121,15 @@ func getRealtimeTripUpdates() (map[string]*TripRealtimeUpdate, error) {
 		tripUpdateCache.mu.Unlock()
 
 		if err != nil {
-			return make(map[string]*TripRealtimeUpdate), err
+			return make(map[string]*TripRealtimeUpdate), make(map[string]*AddedTripUpdate), err
 		}
-		return updates, nil
+		return updates, addedByVehicle, nil
 	}
+}
+
+func getRealtimeTripUpdates() (map[string]*TripRealtimeUpdate, error) {
+	updates, _, err := getRealtimeTripUpdatesAll()
+	return updates, err
 }
 
 func main() {
@@ -960,7 +1190,9 @@ func main() {
 
 		// timetables に存在しない ADDED 便などで headsign が空になる場合、
 		// TripUpdate 側の trip_headsign を優先して補完する。
-		if tripUpdates, updateErr := getRealtimeTripUpdates(); updateErr == nil {
+		var addedByVehicle map[string]*AddedTripUpdate
+		if tripUpdates, addedUpdates, updateErr := getRealtimeTripUpdatesAll(); updateErr == nil {
+			addedByVehicle = addedUpdates
 			updateByVehicle := make(map[string]*TripRealtimeUpdate)
 			routeHeadsignSet := make(map[string]map[string]struct{})
 			for _, u := range tripUpdates {
@@ -1008,6 +1240,28 @@ func main() {
 			}
 		}
 
+		// リアルタイム情報で行先が補完できなかった場合でも、時刻表マスタで一意に決まる行先を補完する
+		for i := range buses {
+			if buses[i].Headsign == "" {
+				var remainingStops []string
+				if addedByVehicle != nil && buses[i].VehicleID != "" {
+					if addedTU, ok := addedByVehicle[buses[i].VehicleID]; ok && addedTU != nil {
+						remainingStops = addedTU.StopIDs
+					}
+				}
+				if pat, ok := inferPatternFromTimetables(buses[i].RouteID, buses[i].NextStopID, remainingStops); ok && pat.Headsign != "" {
+					buses[i].Headsign = pat.Headsign
+				} else if hs := inferHeadsignFromTimetables(buses[i].RouteID, buses[i].NextStopID); hs != "" {
+					buses[i].Headsign = hs
+				}
+			}
+			if buses[i].NextStopName == "" && buses[i].NextStopID != "" {
+				if st, ok := stopsCache[buses[i].NextStopID]; ok {
+					buses[i].NextStopName = st.Name
+				}
+			}
+		}
+
 		if boundsProvided {
 			buses = filterBusesByBounds(buses, minLat, maxLat, minLng, maxLng)
 		}
@@ -1050,7 +1304,63 @@ func main() {
 			}
 		}
 
-		// 3. それでも見つからない場合のみ 404 Not Found
+		// 3. リアルタイム専用の rt_* 便は、路線・次のバス停・TripUpdate から経路パターンが1通りに絞れる場合のみ組み立てる
+		if !found && strings.HasPrefix(tripID, "rt_") {
+			nextStopID := ""
+			vehicleID := strings.TrimPrefix(tripID, "rt_VE_")
+			if vehicleID == tripID {
+				vehicleID = ""
+			}
+			if rtBuses, busErr := getRealtimeBusPositions(); busErr == nil {
+				for _, b := range rtBuses {
+					if b.TripID == tripID || (vehicleID != "" && b.VehicleID == vehicleID) {
+						if b.RouteID != "" {
+							routeID = b.RouteID
+						}
+						nextStopID = b.NextStopID
+						if b.VehicleID != "" {
+							vehicleID = b.VehicleID
+						}
+						break
+					}
+				}
+			}
+
+			var remainingStops []string
+			var predTimes map[string]string
+			if _, addedByVehicle, tuErr := getRealtimeTripUpdatesAll(); tuErr == nil && vehicleID != "" {
+				if addedTU, ok := addedByVehicle[vehicleID]; ok && addedTU != nil {
+					if addedTU.RouteID != "" {
+						routeID = addedTU.RouteID
+					}
+					remainingStops = addedTU.StopIDs
+					predTimes = addedTU.PredictedTimes
+				}
+			}
+
+			if pat, ok := inferPatternFromTimetables(routeID, nextStopID, remainingStops); ok {
+				stops := make([]TripStop, len(pat.StopIDs))
+				for i, sid := range pat.StopIDs {
+					tStr := ""
+					if predTimes != nil {
+						tStr = predTimes[sid]
+					}
+					stops[i] = TripStop{
+						StopID: sid,
+						Time:   tStr,
+					}
+				}
+				trip = TripInfo{
+					OfficeID: pat.OfficeID,
+					Headsign: pat.Headsign,
+					Via:      pat.Via,
+					Stops:    stops,
+				}
+				found = true
+			}
+		}
+
+		// 4. それでも見つからない場合のみ 404 Not Found
 		if !found {
 			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 			return

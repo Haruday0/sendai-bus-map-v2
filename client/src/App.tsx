@@ -25,6 +25,7 @@ import {
 import { getPanelMapPadding } from "./utils";
 import type {
   AppData,
+  LiveTripTelemetry,
   PanelTrip,
   TripDetailResponse,
   TimetablesData,
@@ -76,6 +77,8 @@ function App() {
   );
   const [selectedStopId, setSelectedStopId] = useState<string | null>(null);
   const [selectedTrip, setSelectedTrip] = useState<PanelTrip | null>(null);
+  const [liveTripTelemetry, setLiveTripTelemetry] =
+    useState<LiveTripTelemetry | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [zoom, setZoom] = useState(15);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
@@ -149,17 +152,19 @@ function App() {
         // 取得したバス停情報とtimetables、shapesを data にマージ
         setData((prev) => {
           const patternKey = detail.trip.stops.map((s) => s.stop_id).join("|");
+          const nextTimetables = detail.trip_id.startsWith("rt_")
+            ? prev.timetables
+            : {
+                ...prev.timetables,
+                [detail.route_id]: {
+                  ...(prev.timetables[detail.route_id] || {}),
+                  [detail.trip_id]: detail.trip,
+                },
+              };
           return {
             ...prev,
             stops: { ...prev.stops, ...detail.stops },
-            // 便情報を timetables にマージ
-            timetables: {
-              ...prev.timetables,
-              [detail.route_id]: {
-                ...(prev.timetables[detail.route_id] || {}),
-                [detail.trip_id]: detail.trip,
-              },
-            },
+            timetables: nextTimetables,
             // 経路形状も保存
             shapes: detail.shape
               ? {
@@ -378,6 +383,7 @@ function App() {
   const handleStopClick = useCallback((id: string, currentZoom?: number) => {
     setSelectedStopId(id);
     setSelectedTrip(null);
+    setLiveTripTelemetry(null);
     setIsSearching(false);
     if (currentZoom !== undefined) {
       setZoom(currentZoom);
@@ -391,6 +397,9 @@ function App() {
       highlightId: string | null = null,
       speedKmh?: number,
       occupancyStatus?: string,
+      headsign?: string,
+      nextStopId?: string,
+      nextStopName?: string,
     ) => {
       setSelectedTrip({
         tripId,
@@ -398,6 +407,17 @@ function App() {
         highlightId,
         speedKmh,
         occupancyStatus,
+        headsign,
+        nextStopId,
+        nextStopName,
+      });
+      setLiveTripTelemetry({
+        tripId,
+        speedKmh,
+        occupancyStatus,
+        headsign,
+        nextStopId,
+        nextStopName,
       });
       setSelectedStopId(null);
       setIsSearching(false);
@@ -408,9 +428,44 @@ function App() {
   const handleClosePanel = useCallback(() => {
     setSelectedStopId(null);
     setSelectedTrip(null);
+    setLiveTripTelemetry(null);
     setTripDetail(null);
     setIsSearching(false);
   }, []);
+
+  const handleSelectedBusTelemetry = useCallback(
+    (
+      tripId: string,
+      speedKmh?: number,
+      occupancyStatus?: string,
+      headsign?: string,
+      nextStopId?: string,
+      nextStopName?: string,
+    ) => {
+      setLiveTripTelemetry((prev) => {
+        if (
+          prev &&
+          prev.tripId === tripId &&
+          prev.speedKmh === speedKmh &&
+          prev.occupancyStatus === occupancyStatus &&
+          prev.headsign === headsign &&
+          prev.nextStopId === nextStopId &&
+          prev.nextStopName === nextStopName
+        ) {
+          return prev;
+        }
+        return {
+          tripId,
+          speedKmh,
+          occupancyStatus,
+          headsign,
+          nextStopId,
+          nextStopName,
+        };
+      });
+    },
+    [],
+  );
 
   const handleFlyToStop = useCallback((lng: number, lat: number) => {
     const map = mapRef.current;
@@ -556,6 +611,7 @@ function App() {
         data={data}
         selectedStopId={selectedStopId}
         selectedTrip={selectedTrip}
+        liveTripTelemetry={liveTripTelemetry}
         tripDetail={tripDetail}
         isDebugMode={isDebugMode}
         stopDelays={stopDelays}
@@ -608,6 +664,7 @@ function App() {
         onMoveStart={() => setIsSearching(false)}
         onZoomChange={setZoom}
         setMapRef={(map) => (mapRef.current = map)}
+        onSelectedBusTelemetry={handleSelectedBusTelemetry}
         onBoundsChange={handleBoundsChange}
       />
     </>

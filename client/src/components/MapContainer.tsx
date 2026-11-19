@@ -65,18 +65,50 @@ interface MapContainerProps {
     highlightId?: string,
     speedKmh?: number,
     occupancyStatus?: string,
+    headsign?: string,
+    nextStopId?: string,
+    nextStopName?: string,
   ) => void;
   onMapClick: () => void;
   onMoveStart: () => void;
   onZoomChange: (zoom: number) => void;
   updateBuses?: () => void;
   setMapRef: (map: maplibregl.Map | null) => void;
+  onSelectedBusTelemetry?: (
+    tripId: string,
+    speedKmh?: number,
+    occupancyStatus?: string,
+    headsign?: string,
+    nextStopId?: string,
+    nextStopName?: string,
+  ) => void;
   onBoundsChange?: (
     minLat: number,
     maxLat: number,
     minLng: number,
     maxLng: number,
   ) => void;
+}
+
+function syncBusMarkerHeadsign(container: HTMLElement, headsign: string): void {
+  const formattedHeadsign = formatHeadsign(headsign);
+  const label = container.querySelector(".bus-label");
+  if (!label) return;
+  const existingDest = label.querySelector(".bus-label-dest");
+  if (formattedHeadsign) {
+    if (existingDest) {
+      if (existingDest.textContent !== formattedHeadsign) {
+        existingDest.textContent = formattedHeadsign;
+      }
+    } else {
+      const dest = document.createElement("span");
+      dest.className = "bus-label-dest";
+      dest.textContent = formattedHeadsign;
+      label.appendChild(dest);
+    }
+  } else if (existingDest) {
+    existingDest.remove();
+  }
 }
 
 /** lucide-react の BusFront アイコンを含む DOM 要素を生成 */
@@ -142,6 +174,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   onMoveStart,
   onZoomChange,
   setMapRef,
+  onSelectedBusTelemetry,
   onBoundsChange,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -161,6 +194,11 @@ const MapContainer: React.FC<MapContainerProps> = ({
   useEffect(() => {
     simTimeRef.current = simTime;
   }, [simTime]);
+
+  const onSelectedBusTelemetryRef = useRef(onSelectedBusTelemetry);
+  useEffect(() => {
+    onSelectedBusTelemetryRef.current = onSelectedBusTelemetry;
+  }, [onSelectedBusTelemetry]);
 
   // 地図の準備完了状態を管理
   const isStyleLoadedRef = useRef(false);
@@ -193,9 +231,10 @@ const MapContainer: React.FC<MapContainerProps> = ({
     const zoom = map.getZoom();
     const bounds = map.getBounds();
     const activeTripStops = selectedTrip
-      ? data.timetables[selectedTrip.routeId]?.[selectedTrip.tripId]?.stops.map(
-          (s) => s.stop_id,
-        ) || []
+      ? (
+          tripDetail?.trip ??
+          data.timetables[selectedTrip.routeId]?.[selectedTrip.tripId]
+        )?.stops.map((s) => s.stop_id) || []
       : [];
     const seen = new Set<string>();
 
@@ -247,7 +286,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
       stopMarkersRef.current.push(marker);
     });
-  }, [data, selectedTrip, onStopClick]);
+  }, [data, selectedTrip, tripDetail, onStopClick]);
 
   // --- バスマーカー更新 ---
   const updateBuses = useCallback(async () => {
@@ -266,13 +305,21 @@ const MapContainer: React.FC<MapContainerProps> = ({
       const minLng = bounds.getWest();
       const maxLng = bounds.getEast();
 
-      const buses = await fetchBusPositions(
-        minLat,
-        maxLat,
-        minLng,
-        maxLng,
-        simTimeRef.current,
-      );
+      const buses = selectedTrip
+        ? await fetchBusPositions(
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            simTimeRef.current,
+          )
+        : await fetchBusPositions(
+            minLat,
+            maxLat,
+            minLng,
+            maxLng,
+            simTimeRef.current,
+          );
       if (requestId !== busRequestIdRef.current) return;
 
       try {
@@ -304,6 +351,16 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
         activeTripIds.add(tripId);
         latestBusDataRef.current[tripId] = bus;
+        if (selectedTrip && tripId === selectedTrip.tripId) {
+          onSelectedBusTelemetryRef.current?.(
+            tripId,
+            bus.speed_kmh,
+            bus.occupancy_status,
+            bus.headsign,
+            bus.next_stop_id,
+            bus.next_stop_name,
+          );
+        }
 
         if (!busMarkersRef.current[tripId]) {
           const el = createBusMarkerElement(
@@ -317,6 +374,9 @@ const MapContainer: React.FC<MapContainerProps> = ({
                 undefined,
                 latestBus.speed_kmh,
                 latestBus.occupancy_status,
+                latestBus.headsign,
+                latestBus.next_stop_id,
+                latestBus.next_stop_name,
               );
 
               map.flyTo({
@@ -336,6 +396,10 @@ const MapContainer: React.FC<MapContainerProps> = ({
         } else {
           busMarkersRef.current[tripId].setLngLat(
             bus.position as [number, number],
+          );
+          syncBusMarkerHeadsign(
+            busMarkersRef.current[tripId].getElement(),
+            bus.headsign,
           );
         }
 
@@ -495,7 +559,9 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
     if (!selectedTrip) return;
 
-    const trip = data.timetables[selectedTrip.routeId]?.[selectedTrip.tripId];
+    const trip =
+      tripDetail?.trip ??
+      data.timetables[selectedTrip.routeId]?.[selectedTrip.tripId];
     if (!trip) return;
 
     const patternKey = trip.stops.map((s) => s.stop_id).join("|");
@@ -775,7 +841,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
       } catch {
         // noop
       }
-    }, 5000);
+    }, 10000);
 
     return () => {
       clearInterval(busInterval);
