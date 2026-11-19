@@ -17,7 +17,10 @@ const LayerControl: React.FC<LayerControlProps> = ({
   onLayerChange,
 }) => {
   return (
-    <div id="layer-control-container">
+    <div
+      id="layer-control-container"
+      className="absolute top-5 right-5 z-[9000] transition-[opacity,visibility] duration-250 max-md:top-[65px] max-md:right-2.5 max-md:[body.is-searching_&]:pointer-events-none max-md:[body.is-searching_&]:invisible max-md:[body.is-searching_&]:opacity-0"
+    >
       <Dropdown>
         <Button
           isIconOnly

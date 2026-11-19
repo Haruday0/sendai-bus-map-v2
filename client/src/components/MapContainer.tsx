@@ -843,13 +843,17 @@ const MapContainer: React.FC<MapContainerProps> = ({
   }, [simTime]);
 
   return (
-    <div className="map-container-wrapper">
+    <div className="relative h-full w-full">
       <div id="map" ref={mapContainerRef}></div>
 
       {/* 現在地ボタン */}
       <div
         id="location-control-container"
-        className={isPanelOpen ? "panel-open" : ""}
+        className={`absolute right-5 bottom-10 z-[6500] transition-[bottom,transform,opacity,visibility] duration-300 ease-[cubic-bezier(0.19,1,0.22,1)] max-md:right-3.5 max-md:bottom-9 max-md:[body.is-searching_&]:pointer-events-none max-md:[body.is-searching_&]:invisible max-md:[body.is-searching_&]:opacity-0 ${
+          isPanelOpen
+            ? "max-md:pointer-events-none max-md:invisible max-md:translate-y-2 max-md:opacity-0"
+            : ""
+        }`}
       >
         <Button
           isIconOnly
@@ -865,40 +869,31 @@ const MapContainer: React.FC<MapContainerProps> = ({
         </Button>
       </div>
 
-      <div
-        className={`glass-surface absolute right-2 bottom-2 z-[6500] inline-flex h-6.5 items-center gap-1 rounded-full px-2.5 text-[11px] font-medium leading-none text-foreground transition-opacity duration-250 max-md:right-1.5 max-md:bottom-1.5 max-md:h-6 max-md:px-2 ${
+      <Button
+        variant="tertiary"
+        size="sm"
+        aria-live="polite"
+        onPress={() =>
+          window.open(
+            activeLayer === "osm"
+              ? "https://www.openstreetmap.org/copyright"
+              : "https://maps.gsi.go.jp/development/ichiran.html",
+            "_blank",
+            "noopener,noreferrer",
+          )
+        }
+        className={`glass-surface absolute right-2 bottom-2 z-[6500] h-6.5 px-2.5 text-[11px] transition-opacity duration-250 max-md:right-1.5 max-md:bottom-1.5 max-md:h-6 max-md:px-2 ${
           isPanelOpen
-            ? "max-md:pointer-events-none max-md:invisible max-md:opacity-0 max-md:translate-y-1"
+            ? "max-md:pointer-events-none max-md:invisible max-md:translate-y-1 max-md:opacity-0"
             : ""
         }`}
-        role="note"
-        aria-live="polite"
       >
-        {activeLayer === "osm" ? (
-          <>
-            &copy;{" "}
-            <a
-              href="https://www.openstreetmap.org/copyright"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-inherit no-underline hover:underline"
-            >
-              OpenStreetMap contributors
-            </a>
-          </>
-        ) : (
-          <a
-            href="https://maps.gsi.go.jp/development/ichiran.html"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-inherit no-underline hover:underline"
-          >
-            地理院タイル
-          </a>
-        )}
-      </div>
+        {activeLayer === "osm"
+          ? "© OpenStreetMap contributors"
+          : "地理院タイル"}
+      </Button>
       {isUpdatesPaused && (
-        <div className="updates-paused-overlay">
+        <div className="absolute inset-0 z-[100] flex items-center justify-center bg-[var(--backdrop)] backdrop-blur-[2px]">
           <Button
             variant="primary"
             size="lg"

@@ -3,6 +3,7 @@ import type * as maplibregl from "maplibre-gl";
 import {
   Button,
   Checkbox,
+  Disclosure,
   Label,
   Separator,
   Slider,
@@ -37,12 +38,6 @@ const isDebugEnabledFromSearch = (search: string): boolean => {
   const raw = (params.get("debug") || "").trim().toLowerCase();
   if (raw === "" || raw === "1" || raw === "true" || raw === "on") return true;
   return false;
-};
-
-const buildDebugModeUrl = (): string => {
-  const url = new URL(window.location.href);
-  url.searchParams.set("debug", "1");
-  return url.toString();
 };
 
 function App() {
@@ -81,7 +76,6 @@ function App() {
   const [isDebugMode, setIsDebugMode] = useState(() =>
     isDebugEnabledFromSearch(window.location.search),
   );
-  const [debugModeUrl, setDebugModeUrl] = useState(() => buildDebugModeUrl());
 
   const [simSeconds, setSimSeconds] = useState(8 * 3600 + 30 * 60);
   const [enableSimTime, setEnableSimTime] = useState(false);
@@ -437,7 +431,6 @@ function App() {
   useEffect(() => {
     const syncDebugState = () => {
       setIsDebugMode(isDebugEnabledFromSearch(window.location.search));
-      setDebugModeUrl(buildDebugModeUrl());
     };
 
     window.addEventListener("popstate", syncDebugState);
@@ -476,58 +469,75 @@ function App() {
         <Surface
           id="debug-info-panel"
           variant="default"
-          role="status"
-          aria-live="polite"
-          className="glass-surface absolute top-5 right-[72px] z-[9050] flex max-w-[min(560px,calc(100vw-100px))] flex-col gap-1.5 rounded-2xl px-3 py-2.5 text-[11px] max-md:top-[65px] max-md:right-14 max-md:max-w-[calc(100vw-72px)] max-md:text-[10px]"
+          className="glass-surface absolute top-5 right-[72px] z-[9050] min-w-[168px] max-w-[min(300px,calc(100vw-100px))] rounded-2xl px-3 py-2 text-xs max-md:top-[65px] max-md:right-14 max-md:max-w-[calc(100vw-72px)] max-md:text-[11px]"
         >
-          <div className="grid grid-cols-[64px_1fr] items-start gap-2 max-md:grid-cols-[56px_1fr] max-md:gap-1.5">
-            <span className="font-bold text-muted">Debug URL</span>
-            <span className="break-all text-foreground">{debugModeUrl}</span>
-          </div>
-          <div className="grid grid-cols-[64px_1fr] items-start gap-2 max-md:grid-cols-[56px_1fr] max-md:gap-1.5">
-            <span className="font-bold text-muted">Zoom</span>
-            <span className="text-foreground">{zoom.toFixed(2)}</span>
-          </div>
-
-          <Separator className="my-0.5" />
-
-          {/* 💡 24時間時刻シミュレーター */}
-          <div className="flex flex-col gap-1.5">
-            <Checkbox isSelected={enableSimTime} onChange={setEnableSimTime}>
-              <Checkbox.Control>
-                <Checkbox.Indicator />
-              </Checkbox.Control>
-              <Checkbox.Content>
-                <Label className="text-[11px] font-bold text-accent">
-                  時刻シミュレーション
-                </Label>
-              </Checkbox.Content>
-            </Checkbox>
-
-            {enableSimTime && (
-              <div className="flex items-center gap-2.5">
-                <span className="min-w-11 font-mono text-[13px] font-extrabold text-foreground">
-                  {formatSimTime(simSeconds).substring(0, 5)}
+          <Disclosure defaultExpanded={false}>
+            <Disclosure.Heading>
+              <Disclosure.Trigger className="flex w-full items-center justify-between gap-2 text-left text-xs font-bold text-foreground">
+                <span className="truncate font-mono">
+                  Debug · Z{zoom.toFixed(1)}
+                  {enableSimTime
+                    ? ` · ${formatSimTime(simSeconds).substring(0, 5)}`
+                    : ""}
                 </span>
-                <Slider
-                  aria-label="シミュレーション時刻"
-                  minValue={0}
-                  maxValue={86340}
-                  step={60}
-                  value={simSeconds}
-                  onChange={(val) =>
-                    setSimSeconds(Array.isArray(val) ? val[0] : val)
-                  }
-                  className="flex-1"
-                >
-                  <Slider.Track>
-                    <Slider.Fill />
-                    <Slider.Thumb />
-                  </Slider.Track>
-                </Slider>
-              </div>
-            )}
-          </div>
+                <Disclosure.Indicator />
+              </Disclosure.Trigger>
+            </Disclosure.Heading>
+            <Disclosure.Content>
+              <Disclosure.Body className="flex flex-col gap-2 px-0 pt-2 pb-0.5">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-semibold text-muted">Zoom</span>
+                  <span className="font-mono font-bold text-foreground">
+                    {zoom.toFixed(2)}
+                  </span>
+                </div>
+
+                <Separator />
+
+                {/* 💡 24時間時刻シミュレーター */}
+                <div className="flex flex-col gap-1.5">
+                  <Checkbox
+                    variant="secondary"
+                    isSelected={enableSimTime}
+                    onChange={setEnableSimTime}
+                  >
+                    <Checkbox.Content className="gap-2">
+                      <Checkbox.Control>
+                        <Checkbox.Indicator />
+                      </Checkbox.Control>
+                      <Label className="text-[11px] font-bold text-foreground">
+                        時刻シミュレーション
+                      </Label>
+                    </Checkbox.Content>
+                  </Checkbox>
+
+                  {enableSimTime && (
+                    <div className="flex items-center gap-2.5">
+                      <span className="min-w-11 font-mono text-xs font-extrabold text-foreground">
+                        {formatSimTime(simSeconds).substring(0, 5)}
+                      </span>
+                      <Slider
+                        aria-label="シミュレーション時刻"
+                        minValue={0}
+                        maxValue={86340}
+                        step={60}
+                        value={simSeconds}
+                        onChange={(val) =>
+                          setSimSeconds(Array.isArray(val) ? val[0] : val)
+                        }
+                        className="flex-1"
+                      >
+                        <Slider.Track>
+                          <Slider.Fill />
+                          <Slider.Thumb />
+                        </Slider.Track>
+                      </Slider>
+                    </div>
+                  )}
+                </div>
+              </Disclosure.Body>
+            </Disclosure.Content>
+          </Disclosure>
         </Surface>
       )}
 
