@@ -6,12 +6,213 @@ import { Button } from "@heroui/react";
 // using Material Icons font for markers
 import type {
   AppData,
+  MapLayerType,
   PanelTrip,
   BusPosition,
   TripDetailResponse,
 } from "../types";
 import { fetchBusPositions } from "../dataLoader";
 import { formatHeadsign, getPanelMapPadding } from "../utils";
+import { useTheme } from "../context/ThemeContext";
+
+const MAPTILER_API_KEY = (import.meta.env.VITE_MAPTILER_API_KEY || "").trim();
+
+type BaseStyleMode = "maptiler-light" | "maptiler-dark" | "raster";
+
+const isMapTilerLayer = (layer: MapLayerType): boolean =>
+  layer === "maptiler" ||
+  layer === "maptiler-light" ||
+  layer === "maptiler-dark";
+
+const getBaseStyleMode = (
+  layer: MapLayerType,
+  isDark: boolean,
+): BaseStyleMode => {
+  if (!MAPTILER_API_KEY) return "raster";
+  if (layer === "maptiler") {
+    return isDark ? "maptiler-dark" : "maptiler-light";
+  }
+  if (layer === "maptiler-light") return "maptiler-light";
+  if (layer === "maptiler-dark") return "maptiler-dark";
+  return "raster";
+};
+
+const getMapTilerStyleUrl = (isDark: boolean): string =>
+  `https://api.maptiler.com/maps/${
+    isDark ? "openstreetmap-dark" : "openstreetmap"
+  }/style.json?key=${encodeURIComponent(MAPTILER_API_KEY)}`;
+
+const JAPANESE_NAME_EXPR = ["coalesce", ["get", "name:ja"], ["get", "name"]];
+
+function localizeTextField(value: unknown): unknown {
+  if (value === "{name:en}") {
+    return JAPANESE_NAME_EXPR;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) =>
+      item === "name:en" ? "name:ja" : localizeTextField(item),
+    );
+  }
+  return value;
+}
+
+const localizeMapTilerStyle: maplibregl.TransformStyleFunction = (
+  _previous,
+  nextStyle,
+) => ({
+  ...nextStyle,
+  layers: nextStyle.layers.map((layer) => {
+    if (
+      layer.type !== "symbol" ||
+      !layer.layout ||
+      !("text-field" in layer.layout)
+    ) {
+      return layer;
+    }
+    const currentTextField = layer.layout["text-field"];
+    const localizedTextField = localizeTextField(currentTextField);
+    if (localizedTextField === currentTextField) {
+      return layer;
+    }
+    return {
+      ...layer,
+      layout: {
+        ...layer.layout,
+        "text-field": localizedTextField as NonNullable<
+          maplibregl.SymbolLayerSpecification["layout"]
+        >["text-field"],
+      },
+    };
+  }),
+});
+
+const buildRasterStyle = (
+  initialRasterLayer: MapLayerType,
+): maplibregl.StyleSpecification => ({
+  version: 8,
+  glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+  sources: {
+    gsi: {
+      type: "raster",
+      tiles: ["https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png"],
+      tileSize: 256,
+      attribution:
+        '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener noreferrer">地理院タイル</a>',
+      maxzoom: 18,
+    },
+    "gsi-ortho": {
+      type: "raster",
+      tiles: ["https://cyberjapandata.gsi.go.jp/xyz/ort/{z}/{x}/{y}.jpg"],
+      tileSize: 256,
+      attribution:
+        '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener noreferrer">地理院タイル</a>',
+      maxzoom: 18,
+    },
+    osm: {
+      type: "raster",
+      tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+      tileSize: 256,
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>',
+      maxzoom: 19,
+    },
+  },
+  layers: [
+    {
+      id: "gsi-layer",
+      type: "raster",
+      source: "gsi",
+      layout: {
+        visibility: initialRasterLayer === "pale" ? "visible" : "none",
+      },
+    },
+    {
+      id: "gsi-ortho-layer",
+      type: "raster",
+      source: "gsi-ortho",
+      layout: {
+        visibility: initialRasterLayer === "ortho" ? "visible" : "none",
+      },
+    },
+    {
+      id: "osm-layer",
+      type: "raster",
+      source: "osm",
+      layout: {
+        visibility:
+          initialRasterLayer === "osm" || isMapTilerLayer(initialRasterLayer)
+            ? "visible"
+            : "none",
+      },
+    },
+  ],
+});
+
+function ensureArrowImage(map: maplibregl.Map): void {
+  if (map.hasImage("arrow")) return;
+  const width = 16;
+  const height = 16;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.beginPath();
+  ctx.moveTo(2, 4);
+  ctx.lineTo(width / 2, height - 4);
+  ctx.lineTo(width - 2, 4);
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 3;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.stroke();
+  const imageData = ctx.getImageData(0, 0, width, height);
+  map.addImage("arrow", imageData);
+}
+
+function upsertUserLocationAccuracyLayer(
+  map: maplibregl.Map,
+  longitude: number,
+  latitude: number,
+  accuracyMeters: number,
+): void {
+  const accuracyGeoJSON = createGeoJSONCircle(
+    [longitude, latitude],
+    accuracyMeters,
+  );
+  const accuracySource = map.getSource("user-location-accuracy") as
+    | maplibregl.GeoJSONSource
+    | undefined;
+
+  if (accuracySource) {
+    accuracySource.setData(accuracyGeoJSON);
+    return;
+  }
+
+  map.addSource("user-location-accuracy", {
+    type: "geojson",
+    data: accuracyGeoJSON,
+  });
+  map.addLayer({
+    id: "user-location-accuracy-fill",
+    type: "fill",
+    source: "user-location-accuracy",
+    paint: {
+      "fill-color": "#2563eb",
+      "fill-opacity": 0.15,
+    },
+  });
+  map.addLayer({
+    id: "user-location-accuracy-line",
+    type: "line",
+    source: "user-location-accuracy",
+    paint: {
+      "line-color": "#2563eb",
+      "line-width": 1,
+      "line-opacity": 0.3,
+    },
+  });
+}
 
 function createGeoJSONCircle(
   center: [number, number],
@@ -53,7 +254,7 @@ function disposeBusMarker(marker: maplibregl.Marker): void {
 
 interface MapContainerProps {
   data: AppData;
-  activeLayer: "pale" | "ortho" | "osm";
+  activeLayer: MapLayerType;
   isPanelOpen?: boolean;
   selectedTrip: PanelTrip | null;
   tripDetail?: TripDetailResponse | null;
@@ -204,11 +405,29 @@ const MapContainer: React.FC<MapContainerProps> = ({
   const isStyleLoadedRef = useRef(false);
   const [, forceUpdate] = useState({});
 
+  const { isDark } = useTheme();
+
   // バス更新コスト削減用：更新停止フラグ、最後のアクティビティ時刻、不活動タイマー
   const [isUpdatesPaused, setIsUpdatesPaused] = useState(false);
   const lastActivityTimeRef = useRef<number>(0);
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const initialLayerRef = useRef<"pale" | "ortho" | "osm">(activeLayer);
+  const initialLayerRef = useRef<MapLayerType>(activeLayer);
+  const initialIsDarkRef = useRef<boolean>(isDark);
+  const activeLayerRef = useRef<MapLayerType>(activeLayer);
+  const isDarkRef = useRef<boolean>(isDark);
+  const appliedBaseStyleRef = useRef<BaseStyleMode>(
+    getBaseStyleMode(activeLayer, isDark),
+  );
+  const lastUserAccuracyRef = useRef<{
+    lng: number;
+    lat: number;
+    accuracy: number;
+  } | null>(null);
+
+  useEffect(() => {
+    activeLayerRef.current = activeLayer;
+    isDarkRef.current = isDark;
+  }, [activeLayer, isDark]);
 
   const isPanelOpenRef = useRef(isPanelOpen);
   useEffect(() => {
@@ -455,42 +674,21 @@ const MapContainer: React.FC<MapContainerProps> = ({
         isLocatingRef.current = false;
         setHasLocated(true);
         const { longitude, latitude, accuracy } = position.coords;
+        const accuracyMeters = accuracy || 20;
+        lastUserAccuracyRef.current = {
+          lng: longitude,
+          lat: latitude,
+          accuracy: accuracyMeters,
+        };
 
         // 1. 地図の縮尺に合わせて伸び縮みする誤差円を描く
-        const accuracyGeoJSON = createGeoJSONCircle(
-          [longitude, latitude],
-          accuracy || 20,
-        );
-        const accuracySource = map.getSource(
-          "user-location-accuracy",
-        ) as maplibregl.GeoJSONSource;
-
-        if (accuracySource) {
-          accuracySource.setData(accuracyGeoJSON);
-        } else {
-          map.addSource("user-location-accuracy", {
-            type: "geojson",
-            data: accuracyGeoJSON,
-          });
-          map.addLayer({
-            id: "user-location-accuracy-fill",
-            type: "fill",
-            source: "user-location-accuracy",
-            paint: {
-              "fill-color": "#2563eb",
-              "fill-opacity": 0.15,
-            },
-          });
-          map.addLayer({
-            id: "user-location-accuracy-line",
-            type: "line",
-            source: "user-location-accuracy",
-            paint: {
-              "line-color": "#2563eb",
-              "line-width": 1,
-              "line-opacity": 0.3,
-            },
-          });
+        if (isStyleLoadedRef.current) {
+          upsertUserLocationAccuracyLayer(
+            map,
+            longitude,
+            latitude,
+            accuracyMeters,
+          );
         }
 
         // 2. 中心の青丸マーカーを配置
@@ -614,7 +812,14 @@ const MapContainer: React.FC<MapContainerProps> = ({
   const onZoomChangeRef = useRef(onZoomChange);
 
   const applyLayerVisibility = useCallback(
-    (map: maplibregl.Map, layer: "pale" | "ortho" | "osm") => {
+    (map: maplibregl.Map, layer: MapLayerType) => {
+      if (
+        !map.getLayer("gsi-layer") ||
+        !map.getLayer("gsi-ortho-layer") ||
+        !map.getLayer("osm-layer")
+      ) {
+        return;
+      }
       map.setLayoutProperty(
         "gsi-layer",
         "visibility",
@@ -628,7 +833,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
       map.setLayoutProperty(
         "osm-layer",
         "visibility",
-        layer === "osm" ? "visible" : "none",
+        layer === "osm" || isMapTilerLayer(layer) ? "visible" : "none",
       );
     },
     [],
@@ -713,97 +918,58 @@ const MapContainer: React.FC<MapContainerProps> = ({
   ]);
 
   useEffect(() => {
+    const initialMode = getBaseStyleMode(
+      initialLayerRef.current,
+      initialIsDarkRef.current,
+    );
+    appliedBaseStyleRef.current = initialMode;
+
     const map = new maplibregl.Map({
       container: mapContainerRef.current!,
       attributionControl: false,
-      style: {
-        version: 8,
-        glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
-        sources: {
-          gsi: {
-            type: "raster",
-            tiles: [
-              "https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png",
-            ],
-            tileSize: 256,
-            attribution:
-              '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener noreferrer">地理院タイル</a>',
-            maxzoom: 18,
-          },
-          "gsi-ortho": {
-            type: "raster",
-            tiles: ["https://cyberjapandata.gsi.go.jp/xyz/ort/{z}/{x}/{y}.jpg"],
-            tileSize: 256,
-            attribution:
-              '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener noreferrer">地理院タイル</a>',
-            maxzoom: 18,
-          },
-          osm: {
-            type: "raster",
-            tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-            tileSize: 256,
-            attribution:
-              '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>',
-            maxzoom: 19,
-          },
-        },
-        layers: [
-          {
-            id: "gsi-layer",
-            type: "raster",
-            source: "gsi",
-            layout: {
-              visibility:
-                initialLayerRef.current === "pale" ? "visible" : "none",
-            },
-          },
-          {
-            id: "gsi-ortho-layer",
-            type: "raster",
-            source: "gsi-ortho",
-            layout: {
-              visibility:
-                initialLayerRef.current === "ortho" ? "visible" : "none",
-            },
-          },
-          {
-            id: "osm-layer",
-            type: "raster",
-            source: "osm",
-            layout: {
-              visibility:
-                initialLayerRef.current === "osm" ? "visible" : "none",
-            },
-          },
-        ],
-      },
+      style:
+        initialMode === "raster"
+          ? buildRasterStyle(initialLayerRef.current)
+          : getMapTilerStyleUrl(initialMode === "maptiler-dark"),
+      ...(initialMode !== "raster"
+        ? { transformStyle: localizeMapTilerStyle }
+        : {}),
       center: [140.8824, 38.2601],
       zoom: 15,
     });
 
     mapRef.current = map;
 
+    map.on("style.load", () => {
+      isStyleLoadedRef.current = true;
+      ensureArrowImage(map);
+
+      if (
+        getBaseStyleMode(activeLayerRef.current, isDarkRef.current) === "raster"
+      ) {
+        applyLayerVisibility(map, activeLayerRef.current);
+      }
+
+      if (lastUserAccuracyRef.current) {
+        const loc = lastUserAccuracyRef.current;
+        try {
+          upsertUserLocationAccuracyLayer(map, loc.lng, loc.lat, loc.accuracy);
+        } catch {
+          // noop
+        }
+      }
+
+      try {
+        drawRouteLineRef.current();
+      } catch {
+        // noop
+      }
+    });
+
     map.on("load", () => {
       isStyleLoadedRef.current = true;
       forceUpdate({});
-
-      const width = 16,
-        height = 16;
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d")!;
-      ctx.beginPath();
-      ctx.moveTo(2, 4);
-      ctx.lineTo(width / 2, height - 4);
-      ctx.lineTo(width - 2, 4);
-      ctx.strokeStyle = "#ffffff";
-      ctx.lineWidth = 3;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctx.stroke();
-      const imageData = ctx.getImageData(0, 0, width, height);
-      map.addImage("arrow", imageData);
+      ensureArrowImage(map);
 
       try {
         updateStopMarkersRef.current();
@@ -864,7 +1030,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
       map.remove();
       mapRef.current = null;
     };
-  }, []);
+  }, [applyLayerVisibility]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -892,9 +1058,28 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !isStyleLoadedRef.current) return;
-    applyLayerVisibility(map, activeLayer);
-  }, [activeLayer, applyLayerVisibility]);
+    if (!map) return;
+
+    const targetMode = getBaseStyleMode(activeLayer, isDark);
+    if (targetMode !== appliedBaseStyleRef.current) {
+      appliedBaseStyleRef.current = targetMode;
+      isStyleLoadedRef.current = false;
+
+      if (targetMode === "raster") {
+        map.setStyle(buildRasterStyle(activeLayer), { diff: false });
+      } else {
+        map.setStyle(getMapTilerStyleUrl(targetMode === "maptiler-dark"), {
+          diff: false,
+          transformStyle: localizeMapTilerStyle,
+        });
+      }
+      return;
+    }
+
+    if (targetMode === "raster" && isStyleLoadedRef.current) {
+      applyLayerVisibility(map, activeLayer);
+    }
+  }, [activeLayer, isDark, applyLayerVisibility]);
 
   useEffect(() => {
     if (!isStyleLoadedRef.current) return;
@@ -908,9 +1093,20 @@ const MapContainer: React.FC<MapContainerProps> = ({
     updateBusesRef.current();
   }, [simTime]);
 
+  const isUsingMapTiler =
+    isMapTilerLayer(activeLayer) && Boolean(MAPTILER_API_KEY);
+  const isDarkBasemap =
+    isUsingMapTiler &&
+    (activeLayer === "maptiler-dark" ||
+      (activeLayer === "maptiler" && isDark));
+
   return (
     <div className="relative h-full w-full">
-      <div id="map" ref={mapContainerRef}></div>
+      <div
+        id="map"
+        ref={mapContainerRef}
+        data-dark-basemap={isDarkBasemap ? "true" : "false"}
+      ></div>
 
       {/* 現在地ボタン */}
       <div
@@ -935,29 +1131,60 @@ const MapContainer: React.FC<MapContainerProps> = ({
         </Button>
       </div>
 
-      <Button
-        variant="tertiary"
-        size="sm"
-        aria-live="polite"
-        onPress={() =>
-          window.open(
-            activeLayer === "osm"
-              ? "https://www.openstreetmap.org/copyright"
-              : "https://maps.gsi.go.jp/development/ichiran.html",
-            "_blank",
-            "noopener,noreferrer",
-          )
-        }
-        className={`glass-surface absolute right-2 bottom-2 z-[6500] h-6.5 px-2.5 text-[11px] transition-opacity duration-250 max-md:right-1.5 max-md:bottom-1.5 max-md:h-6 max-md:px-2 ${
-          isPanelOpen
-            ? "max-md:pointer-events-none max-md:invisible max-md:translate-y-1 max-md:opacity-0"
-            : ""
-        }`}
-      >
-        {activeLayer === "osm"
-          ? "© OpenStreetMap contributors"
-          : "地理院タイル"}
-      </Button>
+      {isUsingMapTiler ? (
+        <div
+          aria-live="polite"
+          className={`glass-surface absolute right-2 bottom-2 z-[6500] inline-flex h-6.5 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-medium transition-opacity duration-250 max-md:right-1.5 max-md:bottom-1.5 max-md:h-6 max-md:px-2 ${
+            isPanelOpen
+              ? "max-md:pointer-events-none max-md:invisible max-md:translate-y-1 max-md:opacity-0"
+              : ""
+          }`}
+        >
+          <a
+            href="https://www.maptiler.com/copyright/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-inherit no-underline hover:underline"
+          >
+            © MapTiler
+          </a>
+          <span aria-hidden className="opacity-50">
+            ·
+          </span>
+          <a
+            href="https://www.openstreetmap.org/copyright"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-inherit no-underline hover:underline"
+          >
+            © OpenStreetMap contributors
+          </a>
+        </div>
+      ) : (
+        <Button
+          variant="tertiary"
+          size="sm"
+          aria-live="polite"
+          onPress={() =>
+            window.open(
+              activeLayer === "osm" || isMapTilerLayer(activeLayer)
+                ? "https://www.openstreetmap.org/copyright"
+                : "https://maps.gsi.go.jp/development/ichiran.html",
+              "_blank",
+              "noopener,noreferrer",
+            )
+          }
+          className={`glass-surface absolute right-2 bottom-2 z-[6500] h-6.5 px-2.5 text-[11px] transition-opacity duration-250 max-md:right-1.5 max-md:bottom-1.5 max-md:h-6 max-md:px-2 ${
+            isPanelOpen
+              ? "max-md:pointer-events-none max-md:invisible max-md:translate-y-1 max-md:opacity-0"
+              : ""
+          }`}
+        >
+          {activeLayer === "osm" || isMapTilerLayer(activeLayer)
+            ? "© OpenStreetMap contributors"
+            : "地理院タイル"}
+        </Button>
+      )}
       {isUpdatesPaused && (
         <div className="absolute inset-0 z-[100] flex items-center justify-center bg-[var(--backdrop)] backdrop-blur-[2px]">
           <Button

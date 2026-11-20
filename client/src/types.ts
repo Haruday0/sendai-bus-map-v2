@@ -204,3 +204,12 @@ export interface AppData {
   routes: RoutesData;
   extra: ExtraData;
 }
+
+/** 地図ベースレイヤーの種類 */
+export type MapLayerType =
+  | "maptiler"
+  | "maptiler-light"
+  | "maptiler-dark"
+  | "osm"
+  | "pale"
+  | "ortho";

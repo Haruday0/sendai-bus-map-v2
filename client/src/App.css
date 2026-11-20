@@ -9,6 +9,10 @@
   background: var(--legacy-neutral-100);
 }
 
+#map[data-dark-basemap="true"] {
+  background: #1a1a1a;
+}
+
 /* ===================== STOP MARKERS =============== */
 .stop-marker-container {
   width: 20px;
@@ -56,6 +60,16 @@
   letter-spacing: 0.01em;
 }
 
+#map[data-dark-basemap="true"] .stop-label {
+  color: var(--legacy-neutral-100);
+  text-shadow:
+    1px 1px 0 #18181b,
+    -1px 1px 0 #18181b,
+    1px -1px 0 #18181b,
+    -1px -1px 0 #18181b,
+    0 0 8px rgba(0, 0, 0, 0.85);
+}
+
 /* ===================== BUS MARKERS ================ */
 .bus-marker-container {
   width: 40px;
@@ -80,6 +94,12 @@
   filter: drop-shadow(2px 2px 0 #fff) drop-shadow(-2px 2px 0 #fff)
     drop-shadow(2px -2px 0 #fff) drop-shadow(-2px -2px 0 #fff)
     drop-shadow(0 0 4px rgba(0, 0, 0, 0.2));
+}
+
+#map[data-dark-basemap="true"] .bus-icon-wrapper {
+  filter: drop-shadow(2px 2px 0 #18181b) drop-shadow(-2px 2px 0 #18181b)
+    drop-shadow(2px -2px 0 #18181b) drop-shadow(-2px -2px 0 #18181b)
+    drop-shadow(0 0 4px rgba(0, 0, 0, 0.5));
 }
 
 .bus-icon-wrapper svg {

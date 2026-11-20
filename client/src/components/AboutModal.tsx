@@ -202,6 +202,14 @@ const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
                   <ul className="list-disc space-y-1 pl-5">
                     <li>
                       <strong>地図タイル:</strong>{" "}
+                      <ExternalLink href="https://www.maptiler.com/copyright/">
+                        MapTiler
+                      </ExternalLink>{" "}
+                      /{" "}
+                      <ExternalLink href="https://www.openstreetmap.org/copyright">
+                        OpenStreetMap
+                      </ExternalLink>{" "}
+                      /{" "}
                       <ExternalLink href="https://maps.gsi.go.jp/development/ichiran.html">
                         国土地理院 地理院タイル
                       </ExternalLink>

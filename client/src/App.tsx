@@ -26,6 +26,7 @@ import { getPanelMapPadding } from "./utils";
 import type {
   AppData,
   LiveTripTelemetry,
+  MapLayerType,
   PanelTrip,
   TripDetailResponse,
   TimetablesData,
@@ -37,6 +38,7 @@ import MapContainer from "./components/MapContainer";
 import SearchBox from "./components/SearchBox";
 import BusPanel from "./components/BusPanel";
 import LayerControl from "./components/LayerControl";
+import ThemeToggleButton from "./components/ThemeToggleButton";
 import AboutModal from "./components/AboutModal";
 
 const isDebugEnabledFromSearch = (search: string): boolean => {
@@ -72,8 +74,9 @@ function App() {
   const boundsRequestIdRef = useRef(0);
 
   // --- 状態管理 ---
-  const [activeLayer, setActiveLayer] = useState<"pale" | "ortho" | "osm">(
-    "osm",
+  const hasMapTiler = Boolean((import.meta.env.VITE_MAPTILER_API_KEY || "").trim());
+  const [activeLayer, setActiveLayer] = useState<MapLayerType>(
+    hasMapTiler ? "maptiler" : "osm",
   );
   const [selectedStopId, setSelectedStopId] = useState<string | null>(null);
   const [selectedTrip, setSelectedTrip] = useState<PanelTrip | null>(null);
@@ -529,7 +532,17 @@ function App() {
         isOpen={isSearching}
       />
 
-      <LayerControl activeLayer={activeLayer} onLayerChange={setActiveLayer} />
+      <div
+        id="layer-control-container"
+        className="absolute top-5 right-5 z-[9000] flex flex-col items-center gap-2 transition-[opacity,visibility] duration-250 max-md:top-[65px] max-md:right-2.5 max-md:[body.is-searching_&]:pointer-events-none max-md:[body.is-searching_&]:invisible max-md:[body.is-searching_&]:opacity-0"
+      >
+        <LayerControl
+          activeLayer={activeLayer}
+          onLayerChange={setActiveLayer}
+          hasMapTiler={hasMapTiler}
+        />
+        <ThemeToggleButton />
+      </div>
 
       {isDebugMode && (
         <Surface

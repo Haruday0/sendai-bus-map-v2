@@ -6,6 +6,18 @@
     <link rel="apple-touch-icon" href="/bus.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>仙台バスマップ</title>
+    <script>
+      try {
+        var s = localStorage.getItem("bus-map-theme");
+        var d =
+          s === "dark" ||
+          (s !== "light" &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches);
+        var r = document.documentElement;
+        r.classList.add(d ? "dark" : "light");
+        r.setAttribute("data-theme", d ? "dark" : "light");
+      } catch (e) {}
+    </script>
     <meta
       name="description"
       content="仙台市営バスの現在位置や遅延状況、混雑度をリアルタイムデータに基づいて地図上に表示するアプリです。"
@@ -42,6 +54,11 @@
     <!-- Material Icons Outlined for UI icons -->
     <link
       href="https://fonts.googleapis.com/css2?family=Material+Icons+Outlined"
+      rel="stylesheet"
+    />
+    <!-- Material Symbols Rounded for theme toggle icons (saal-app parity) -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0&icon_names=dark_mode,light_mode,light_mode_auto,night_sight_auto"
       rel="stylesheet"
     />
   </head>
