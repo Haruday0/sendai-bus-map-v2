@@ -2,15 +2,24 @@ import React from "react";
 
 interface TimelineProps {
   children: React.ReactNode;
+  color?: string;
   className?: string;
 }
 
 /** 縦線が途中で途切れず連続するタイムラインコンテナ */
 export const Timeline: React.FC<TimelineProps> = ({
   children,
+  color,
   className = "",
 }) => (
-  <ol className={`m-0 flex list-none flex-col p-0 ${className}`}>
+  <ol
+    className={`m-0 flex list-none flex-col p-0 ${className}`}
+    style={
+      color
+        ? ({ "--timeline-color": color } as React.CSSProperties)
+        : undefined
+    }
+  >
     {children}
   </ol>
 );
@@ -37,9 +46,12 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
   isLast = false,
   onClick,
 }) => {
-  // 通過済み(isPast)はグレー、これから向かう(未通過)はアクセント色。
-  // 走行中の区間(直前が通過済み・次が未通過)では、丸と丸の中間までグレー・中間から先がアクセント色になる。
-  const lineColor = isPast ? "bg-separator" : "bg-accent/75";
+  // 通過済み(isPast)はグレー、これから向かう(未通過)は路線色（未指定時はアクセント色）。
+  // 走行中の区間(直前が通過済み・次が未通過)では、丸と丸の中間までグレー・中間から先が路線色になる。
+  const lineColorClass = isPast ? "bg-separator" : "";
+  const upcomingLineStyle = isPast
+    ? undefined
+    : { backgroundColor: "var(--timeline-color, var(--accent))" };
 
   const rowToneClass = isHighlighted
     ? onClick
@@ -51,11 +63,14 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
         : "hover:bg-default/75"
       : "";
 
-  // 通過済みバス停の丸は線と同じグレー、未通過のバス停はアクセント色
+  // 通過済みバス停の丸は線と同じグレー、未通過のバス停は路線色
   const nodeDot = isPast ? (
     <span className="relative z-10 size-2.5 rounded-full border-2 border-muted/60 bg-surface" />
   ) : (
-    <span className="relative z-10 size-2.5 rounded-full border-2 border-accent bg-surface" />
+    <span
+      className="relative z-10 size-2.5 rounded-full border-2 bg-surface"
+      style={{ borderColor: "var(--timeline-color, var(--accent))" }}
+    />
   );
 
   return (
@@ -80,12 +95,14 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
       >
         {!isFirst && (
           <span
-            className={`absolute top-0 bottom-1/2 left-1/2 w-[3px] -translate-x-1/2 ${lineColor}`}
+            className={`absolute top-0 bottom-1/2 left-1/2 w-[3px] -translate-x-1/2 ${lineColorClass}`}
+            style={upcomingLineStyle}
           />
         )}
         {!isLast && (
           <span
-            className={`absolute top-1/2 bottom-0 left-1/2 w-[3px] -translate-x-1/2 ${lineColor}`}
+            className={`absolute top-1/2 bottom-0 left-1/2 w-[3px] -translate-x-1/2 ${lineColorClass}`}
+            style={upcomingLineStyle}
           />
         )}
         {nodeDot}

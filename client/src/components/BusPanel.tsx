@@ -490,7 +490,11 @@ const BusPanel: React.FC<BusPanelProps> = ({
         );
       });
 
-      items = [<Timeline key="trip-timeline">{stopItems}</Timeline>];
+      items = [
+        <Timeline key="trip-timeline" color={routeColor}>
+          {stopItems}
+        </Timeline>,
+      ];
     } else if (selectedTrip && selectedTrip.tripId.startsWith("rt_")) {
       const routeObj = data.routes[selectedTrip.routeId];
       const routeName = routeObj?.short_name || selectedTrip.routeId;
