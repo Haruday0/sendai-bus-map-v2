@@ -17,6 +17,7 @@ import {
 import { fetchAllStops } from "../dataLoader";
 
 interface SearchBoxProps {
+  allStops?: StopsData;
   onSelectStop: (stopName: string, lat: number, lng: number) => void;
   onSearchStateChange: (isSearching: boolean) => void;
   onFocus?: () => void;
@@ -32,6 +33,7 @@ interface StopCandidate {
 }
 
 const SearchBox: React.FC<SearchBoxProps> = ({
+  allStops: externalStops,
   onSelectStop,
   onSearchStateChange,
   onFocus,
@@ -43,20 +45,22 @@ const SearchBox: React.FC<SearchBoxProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const isClearingRef = useRef(false);
-  const [allStops, setAllStops] = useState<StopsData>({});
+  const [fetchedStops, setFetchedStops] = useState<StopsData>({});
+  const allStops = externalStops ?? fetchedStops;
 
-  // 初回マウント時に全バス停データを取得してキャッシュ
+  // 外部から渡されていない場合のみ初回マウント時に全バス停データを取得
   useEffect(() => {
+    if (externalStops) return;
     const loadAllStops = async () => {
       try {
         const stops = await fetchAllStops();
-        setAllStops(stops);
+        setFetchedStops(stops);
       } catch (e) {
         console.error("全バス停データの取得に失敗しました:", e);
       }
     };
     loadAllStops();
-  }, []);
+  }, [externalStops]);
 
   // カタカナをひらがなに変換
   const katakanaToHiragana = useCallback((str: string): string => {

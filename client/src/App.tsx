@@ -13,10 +13,10 @@ import {
   Label,
   Separator,
   Slider,
-  Spinner,
   Surface,
 } from "@heroui/react";
 import {
+  fetchAllStops,
   fetchStopsByBounds,
   loadEssentialData,
   fetchTripDetails,
@@ -28,6 +28,7 @@ import type {
   LiveTripTelemetry,
   MapLayerType,
   PanelTrip,
+  StopsData,
   TripDetailResponse,
   TimetablesData,
 } from "./types";
@@ -40,6 +41,9 @@ import BusPanel from "./components/BusPanel";
 import LayerControl from "./components/LayerControl";
 import ThemeToggleButton from "./components/ThemeToggleButton";
 import AboutModal from "./components/AboutModal";
+import StartupOverlay, {
+  type StartupTaskItem,
+} from "./components/StartupOverlay";
 
 const isDebugEnabledFromSearch = (search: string): boolean => {
   const params = new URLSearchParams(search);
@@ -80,6 +84,7 @@ function App() {
   );
   const [selectedStopId, setSelectedStopId] = useState<string | null>(null);
   const [selectedTrip, setSelectedTrip] = useState<PanelTrip | null>(null);
+  const [isPanelExpanded, setIsPanelExpanded] = useState(false);
   const [liveTripTelemetry, setLiveTripTelemetry] =
     useState<LiveTripTelemetry | null>(null);
   const [isSearching, setIsSearching] = useState(false);
@@ -88,6 +93,16 @@ function App() {
   const [isDebugMode, setIsDebugMode] = useState(() =>
     isDebugEnabledFromSearch(window.location.search),
   );
+
+  // --- 起動進捗・準備状態 ---
+  const [allStops, setAllStops] = useState<StopsData>({});
+  const [essentialLoaded, setEssentialLoaded] = useState(false);
+  const [allStopsLoaded, setAllStopsLoaded] = useState(false);
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [initialStopsLoaded, setInitialStopsLoaded] = useState(false);
+  const [initialBusesLoaded, setInitialBusesLoaded] = useState(false);
+  const [isServerWaking, setIsServerWaking] = useState(false);
+  const [isAppReady, setIsAppReady] = useState(false);
 
   const [simSeconds, setSimSeconds] = useState(8 * 3600 + 30 * 60);
   const [enableSimTime, setEnableSimTime] = useState(false);
@@ -119,23 +134,140 @@ function App() {
   const isPanelOpen = !!selectedStopId || !!selectedTrip;
 
   // ==================== データ読み込み ====================
-  // 初期化時に必須データ（calendar, routes, extra）のみを取得
+  // 初期化時に必須データ（calendar, routes, extra）と全バス停データを並列取得（Azureコールドスタート時はリトライ）
   useEffect(() => {
-    const initData = async () => {
+    let cancelled = false;
+    let essentialTimer: ReturnType<typeof setTimeout> | null = null;
+    let stopsTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const initEssential = async () => {
       try {
         const essentialData = await loadEssentialData();
+        if (cancelled) return;
         setData((prev) => ({
           ...prev,
           calendar: essentialData.calendar,
           routes: essentialData.routes,
           extra: essentialData.extra,
         }));
+        setEssentialLoaded(true);
       } catch (e) {
         console.error("failed to load essential data", e);
+        if (!cancelled) {
+          setIsServerWaking(true);
+          essentialTimer = setTimeout(initEssential, 2500);
+        }
       }
     };
-    initData();
+
+    const initAllStops = async () => {
+      try {
+        const stops = await fetchAllStops();
+        if (cancelled) return;
+        setAllStops(stops);
+        setAllStopsLoaded(true);
+      } catch (e) {
+        console.error("failed to load all stops", e);
+        if (!cancelled) {
+          setIsServerWaking(true);
+          stopsTimer = setTimeout(initAllStops, 2500);
+        }
+      }
+    };
+
+    initEssential();
+    initAllStops();
+
+    return () => {
+      cancelled = true;
+      if (essentialTimer) clearTimeout(essentialTimer);
+      if (stopsTimer) clearTimeout(stopsTimer);
+    };
   }, []);
+
+  // サーバーのコールドスタート待ち表示
+  useEffect(() => {
+    if (isAppReady) return;
+    const wakingTimer = setTimeout(() => {
+      setIsServerWaking(true);
+    }, 3000);
+    return () => {
+      clearTimeout(wakingTimer);
+    };
+  }, [isAppReady]);
+
+  const serverConnected =
+    essentialLoaded ||
+    allStopsLoaded ||
+    initialStopsLoaded ||
+    initialBusesLoaded;
+  const initialLiveLoaded = initialStopsLoaded && initialBusesLoaded;
+
+  const startupTasks: StartupTaskItem[] = [
+    {
+      id: "essential",
+      label: "路線・ダイヤデータ",
+      status: essentialLoaded
+        ? "done"
+        : serverConnected
+          ? "loading"
+          : "waiting",
+    },
+    {
+      id: "stops",
+      label: "全バス停データ",
+      status: allStopsLoaded
+        ? "done"
+        : serverConnected
+          ? "loading"
+          : "waiting",
+    },
+    {
+      id: "live",
+      label: "周辺バス停・運行状況",
+      status: initialLiveLoaded
+        ? "done"
+        : serverConnected
+          ? "loading"
+          : "waiting",
+    },
+    {
+      id: "map",
+      label: "地図",
+      status: mapLoaded ? "done" : "loading",
+    },
+  ];
+
+  const completedStartupTasks = startupTasks.filter(
+    (task) => task.status === "done",
+  ).length;
+  const allStartupStepsDone = completedStartupTasks === startupTasks.length;
+
+  const bootProgress =
+    allStartupStepsDone || isAppReady
+      ? 100
+      : Math.round((completedStartupTasks / startupTasks.length) * 100);
+
+  const bootStatusText = allStartupStepsDone
+    ? "読み込み完了"
+    : !serverConnected
+      ? mapLoaded
+        ? "サーバー応答待ち..."
+        : "データ・地図を準備中..."
+      : !essentialLoaded || !allStopsLoaded || !initialLiveLoaded
+        ? mapLoaded
+          ? "バスデータを読み込み中..."
+          : "データ・地図を読み込み中..."
+        : "地図を読み込み中...";
+
+  useEffect(() => {
+    if (!allStartupStepsDone || isAppReady) return;
+    // ProgressBarのwidthアニメーション(300ms)完了と100%表示の視認のため少し待つ
+    const timer = setTimeout(() => {
+      setIsAppReady(true);
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [allStartupStepsDone, isAppReady]);
 
   // selectedTrip が変更されたら、サーバーから便詳細（全停車バス停情報+shape）を取得
   useEffect(() => {
@@ -314,12 +446,36 @@ function App() {
 
           return { ...prev, stops: newStops };
         });
+        setInitialStopsLoaded(true);
       } catch (e) {
         console.error("failed to fetch stops by bounds", e);
       }
     },
     [selectedStopId, selectedTrip, tripDetail],
   );
+
+  // Azure起動直後などで周辺バス停の初回取得が失敗した場合も自動で再取得する
+  useEffect(() => {
+    if (!essentialLoaded || initialStopsLoaded) return;
+    const timer = setInterval(() => {
+      const map = mapRef.current;
+      if (!map) return;
+      try {
+        const b = map.getBounds();
+        if (b) {
+          handleBoundsChange(
+            b.getSouth(),
+            b.getNorth(),
+            b.getWest(),
+            b.getEast(),
+          );
+        }
+      } catch {
+        // noop
+      }
+    }, 2500);
+    return () => clearInterval(timer);
+  }, [essentialLoaded, initialStopsLoaded, handleBoundsChange]);
 
   // ==================== 検索でバス停を選択 ====================
 
@@ -433,6 +589,7 @@ function App() {
     setSelectedTrip(null);
     setLiveTripTelemetry(null);
     setTripDetail(null);
+    setIsPanelExpanded(false);
     setIsSearching(false);
   }, []);
 
@@ -510,114 +667,108 @@ function App() {
     };
   }, []);
 
-  // ==================== ローディング ====================
-
-  if (!data) {
-    return (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-background text-sm font-medium text-muted">
-        <Spinner size="lg" />
-        <span>読み込み中...</span>
-      </div>
-    );
-  }
-
   // ==================== レンダリング ====================
 
   return (
     <>
-      <SearchBox
-        onSelectStop={handleSelectSearchStop}
-        onSearchStateChange={setIsSearching}
-        onFocus={handleClosePanel}
-        isOpen={isSearching}
-      />
+      {isAppReady && (
+        <>
+          <SearchBox
+            allStops={allStops}
+            onSelectStop={handleSelectSearchStop}
+            onSearchStateChange={setIsSearching}
+            onFocus={handleClosePanel}
+            isOpen={isSearching}
+          />
 
-      <div
-        id="layer-control-container"
-        className="absolute top-5 right-5 z-[9000] flex flex-col items-center gap-2 transition-[opacity,visibility] duration-250 max-md:top-[65px] max-md:right-2.5 max-md:[body.is-searching_&]:pointer-events-none max-md:[body.is-searching_&]:invisible max-md:[body.is-searching_&]:opacity-0"
-      >
-        <LayerControl
-          activeLayer={activeLayer}
-          onLayerChange={setActiveLayer}
-          hasMapTiler={hasMapTiler}
-        />
-        <ThemeToggleButton />
-      </div>
+          <div
+            id="layer-control-container"
+            className="absolute top-5 right-5 z-[9000] flex flex-col items-center gap-2 transition-[opacity,visibility] duration-250 max-md:top-[65px] max-md:right-2.5 max-md:[body.is-searching_&]:pointer-events-none max-md:[body.is-searching_&]:invisible max-md:[body.is-searching_&]:opacity-0"
+          >
+            <LayerControl
+              activeLayer={activeLayer}
+              onLayerChange={setActiveLayer}
+              hasMapTiler={hasMapTiler}
+            />
+            <ThemeToggleButton />
+          </div>
 
-      {isDebugMode && (
-        <Surface
-          id="debug-info-panel"
-          variant="default"
-          className="glass-surface absolute top-5 right-[72px] z-[9050] min-w-[168px] max-w-[min(300px,calc(100vw-100px))] rounded-2xl px-3 py-2 text-xs max-md:top-[65px] max-md:right-14 max-md:max-w-[calc(100vw-72px)] max-md:text-[11px]"
-        >
-          <Disclosure defaultExpanded={false}>
-            <Disclosure.Heading>
-              <Disclosure.Trigger className="flex w-full items-center justify-between gap-2 text-left text-xs font-bold text-foreground">
-                <span className="truncate font-mono">
-                  Debug · Z{zoom.toFixed(1)}
-                  {enableSimTime
-                    ? ` · ${formatSimTime(simSeconds).substring(0, 5)}`
-                    : ""}
-                </span>
-                <Disclosure.Indicator />
-              </Disclosure.Trigger>
-            </Disclosure.Heading>
-            <Disclosure.Content>
-              <Disclosure.Body className="flex flex-col gap-2 px-0 pt-2 pb-0.5">
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="font-semibold text-muted">Zoom</span>
-                  <span className="font-mono font-bold text-foreground">
-                    {zoom.toFixed(2)}
-                  </span>
-                </div>
-
-                <Separator />
-
-                {/* 💡 24時間時刻シミュレーター */}
-                <div className="flex flex-col gap-1.5">
-                  <Checkbox
-                    variant="secondary"
-                    isSelected={enableSimTime}
-                    onChange={setEnableSimTime}
-                  >
-                    <Checkbox.Content className="gap-2">
-                      <Checkbox.Control>
-                        <Checkbox.Indicator />
-                      </Checkbox.Control>
-                      <Label className="text-[11px] font-bold text-foreground">
-                        時刻シミュレーション
-                      </Label>
-                    </Checkbox.Content>
-                  </Checkbox>
-
-                  {enableSimTime && (
-                    <div className="flex items-center gap-2.5">
-                      <span className="min-w-11 font-mono text-xs font-extrabold text-foreground">
-                        {formatSimTime(simSeconds).substring(0, 5)}
+          {isDebugMode && (
+            <Surface
+              id="debug-info-panel"
+              variant="default"
+              className="glass-surface absolute top-5 right-[72px] z-[9050] min-w-[168px] max-w-[min(300px,calc(100vw-100px))] rounded-2xl px-3 py-2 text-xs max-md:top-[65px] max-md:right-14 max-md:max-w-[calc(100vw-72px)] max-md:text-[11px]"
+            >
+              <Disclosure defaultExpanded={false}>
+                <Disclosure.Heading>
+                  <Disclosure.Trigger className="flex w-full items-center justify-between gap-2 text-left text-xs font-bold text-foreground">
+                    <span className="truncate font-mono">
+                      Debug · Z{zoom.toFixed(1)}
+                      {enableSimTime
+                        ? ` · ${formatSimTime(simSeconds).substring(0, 5)}`
+                        : ""}
+                    </span>
+                    <Disclosure.Indicator />
+                  </Disclosure.Trigger>
+                </Disclosure.Heading>
+                <Disclosure.Content>
+                  <Disclosure.Body className="flex flex-col gap-2 px-0 pt-2 pb-0.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-semibold text-muted">Zoom</span>
+                      <span className="font-mono font-bold text-foreground">
+                        {zoom.toFixed(2)}
                       </span>
-                      <Slider
-                        aria-label="シミュレーション時刻"
-                        minValue={0}
-                        maxValue={86340}
-                        step={60}
-                        value={simSeconds}
-                        onChange={(val) =>
-                          setSimSeconds(Array.isArray(val) ? val[0] : val)
-                        }
-                        className="flex-1"
-                      >
-                        <Slider.Track>
-                          <Slider.Fill />
-                          <Slider.Thumb />
-                        </Slider.Track>
-                      </Slider>
                     </div>
-                  )}
-                </div>
-              </Disclosure.Body>
-            </Disclosure.Content>
-          </Disclosure>
-        </Surface>
+
+                    <Separator />
+
+                    {/* 💡 24時間時刻シミュレーター */}
+                    <div className="flex flex-col gap-1.5">
+                      <Checkbox
+                        variant="secondary"
+                        isSelected={enableSimTime}
+                        onChange={setEnableSimTime}
+                      >
+                        <Checkbox.Content className="gap-2">
+                          <Checkbox.Control>
+                            <Checkbox.Indicator />
+                          </Checkbox.Control>
+                          <Label className="text-[11px] font-bold text-foreground">
+                            時刻シミュレーション
+                          </Label>
+                        </Checkbox.Content>
+                      </Checkbox>
+
+                      {enableSimTime && (
+                        <div className="flex items-center gap-2.5">
+                          <span className="min-w-11 font-mono text-xs font-extrabold text-foreground">
+                            {formatSimTime(simSeconds).substring(0, 5)}
+                          </span>
+                          <Slider
+                            aria-label="シミュレーション時刻"
+                            minValue={0}
+                            maxValue={86340}
+                            step={60}
+                            value={simSeconds}
+                            onChange={(val) =>
+                              setSimSeconds(Array.isArray(val) ? val[0] : val)
+                            }
+                            className="flex-1"
+                          >
+                            <Slider.Track>
+                              <Slider.Fill />
+                              <Slider.Thumb />
+                            </Slider.Track>
+                          </Slider>
+                        </div>
+                      )}
+                    </div>
+                  </Disclosure.Body>
+                </Disclosure.Content>
+              </Disclosure>
+            </Surface>
+          )}
+        </>
       )}
 
       <BusPanel
@@ -630,36 +781,40 @@ function App() {
         stopDelays={stopDelays}
         zoom={zoom}
         timetableReadyForStop={timetableReadyForStop}
+        isExpanded={isPanelExpanded}
+        onToggleExpand={() => setIsPanelExpanded((prev) => !prev)}
         onClose={handleClosePanel}
         onSelectBus={handleBusClick}
         onFlyToStop={handleFlyToStop}
       />
 
-      <Button
-        variant="tertiary"
-        size="sm"
-        onPress={() => setIsAboutOpen(true)}
-        aria-label="アプリについてとソースコード"
-        className={`glass-surface absolute bottom-2 left-2 z-[6500] h-6.5 gap-1.5 px-2.5 text-[11px] max-md:bottom-1.5 max-md:left-1.5 max-md:h-6 max-md:px-2 ${
-          isPanelOpen
-            ? "max-md:pointer-events-none max-md:invisible max-md:opacity-0"
-            : ""
-        }`}
-      >
-        <svg
-          className="size-3.5 shrink-0"
-          viewBox="0 0 16 16"
-          width="16"
-          height="16"
-          aria-hidden
+      {isAppReady && (
+        <Button
+          variant="tertiary"
+          size="sm"
+          onPress={() => setIsAboutOpen(true)}
+          aria-label="アプリについてとソースコード"
+          className={`glass-surface absolute bottom-2 left-2 z-[6500] h-6.5 gap-1.5 px-2.5 text-[11px] max-md:bottom-1.5 max-md:left-1.5 max-md:h-6 max-md:px-2 ${
+            isPanelOpen
+              ? "max-md:pointer-events-none max-md:invisible max-md:opacity-0"
+              : ""
+          }`}
         >
-          <path
-            fill="currentColor"
-            d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.52 7.52 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z"
-          />
-        </svg>
-        <span>GitHub / 概要</span>
-      </Button>
+          <svg
+            className="size-3.5 shrink-0"
+            viewBox="0 0 16 16"
+            width="16"
+            height="16"
+            aria-hidden
+          >
+            <path
+              fill="currentColor"
+              d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.52 7.52 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z"
+            />
+          </svg>
+          <span>GitHub / 概要</span>
+        </Button>
+      )}
 
       {/* 💡 ページ内ウィンドウ */}
       <AboutModal isOpen={isAboutOpen} onClose={() => setIsAboutOpen(false)} />
@@ -667,6 +822,8 @@ function App() {
       <MapContainer
         data={data}
         activeLayer={activeLayer}
+        isAppReady={isAppReady}
+        essentialReady={essentialLoaded}
         isPanelOpen={isPanelOpen}
         selectedTrip={selectedTrip}
         tripDetail={tripDetail}
@@ -677,8 +834,19 @@ function App() {
         onMoveStart={() => setIsSearching(false)}
         onZoomChange={setZoom}
         setMapRef={(map) => (mapRef.current = map)}
+        onMapLoaded={() => setMapLoaded(true)}
+        onInitialBusesLoaded={() => setInitialBusesLoaded(true)}
         onSelectedBusTelemetry={handleSelectedBusTelemetry}
         onBoundsChange={handleBoundsChange}
+      />
+
+      <StartupOverlay
+        isVisible={!isAppReady}
+        progress={bootProgress}
+        statusText={bootStatusText}
+        serverConnected={serverConnected}
+        isServerWaking={isServerWaking}
+        tasks={startupTasks}
       />
     </>
   );

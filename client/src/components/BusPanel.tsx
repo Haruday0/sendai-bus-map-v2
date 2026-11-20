@@ -5,6 +5,7 @@ import React, {
   useLayoutEffect,
   useRef,
 } from "react";
+import { motion } from "motion/react";
 // use Material Icons font for simple UI icons
 import {
   Card,
@@ -94,6 +95,56 @@ const PanelTimeDisplay: React.FC<{
   );
 };
 
+interface PanelRect {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+  borderRadius: number;
+}
+
+function getBusPanelRect(
+  viewportWidth: number,
+  viewportHeight: number,
+  isExpanded: boolean,
+): PanelRect {
+  if (isExpanded) {
+    return {
+      top: 0,
+      left: 0,
+      width: viewportWidth,
+      height: viewportHeight,
+      borderRadius: 0,
+    };
+  }
+
+  if (viewportWidth < 768) {
+    const height = Math.min(
+      Math.round(viewportHeight * 0.6),
+      Math.round(viewportHeight * 0.8),
+    );
+    return {
+      top: Math.max(0, viewportHeight - 20 - height),
+      left: 10,
+      width: Math.max(240, viewportWidth - 20),
+      height,
+      borderRadius: 24,
+    };
+  }
+
+  const height = Math.min(
+    Math.round(viewportHeight * 0.6),
+    Math.max(240, viewportHeight - 120),
+  );
+  return {
+    top: 80,
+    left: 20,
+    width: Math.min(Math.max(240, viewportWidth - 40), 400),
+    height,
+    borderRadius: 24,
+  };
+}
+
 interface BusPanelProps {
   data: AppData;
   selectedStopId: string | null;
@@ -104,6 +155,8 @@ interface BusPanelProps {
   stopDelays: Record<string, Record<string, number>>;
   zoom: number;
   timetableReadyForStop?: string | null;
+  isExpanded?: boolean;
+  onToggleExpand?: () => void;
   onClose: () => void;
   onSelectBus: (
     tripId: string,
@@ -186,6 +239,8 @@ const BusPanel: React.FC<BusPanelProps> = ({
   stopDelays,
   zoom,
   timetableReadyForStop,
+  isExpanded = false,
+  onToggleExpand,
   onClose,
   onSelectBus,
   onFlyToStop,
@@ -194,7 +249,33 @@ const BusPanel: React.FC<BusPanelProps> = ({
   const [tripOccupancyMap, setTripOccupancyMap] = useState<
     Record<string, string>
   >({});
+  const [viewport, setViewport] = useState(() => ({
+    width: typeof window !== "undefined" ? window.innerWidth : 1024,
+    height: typeof window !== "undefined" ? window.innerHeight : 768,
+  }));
   const contentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setViewport({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (!isExpanded || !onToggleExpand) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onToggleExpand();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isExpanded, onToggleExpand]);
 
   const currentSelectionKey = selectedTrip
     ? `trip-${selectedTrip.tripId}`
@@ -824,89 +905,142 @@ const BusPanel: React.FC<BusPanelProps> = ({
   ]);
 
   const isOpen = !!(selectedStopId || selectedTrip);
+  const isMobile = viewport.width < 768;
+  const targetRect = getBusPanelRect(
+    viewport.width,
+    viewport.height,
+    isExpanded,
+  );
+  const panelZIndex = isExpanded ? 9500 : isMobile ? 6000 : 8000;
 
   return (
-    <Surface
+    <motion.div
       id="bottom-panel"
-      variant="default"
-      className={`glass-surface-lg absolute z-[6000] flex h-[60%] max-h-[80%] flex-col overflow-hidden rounded-3xl transition-[opacity,transform] duration-350 ease-[cubic-bezier(0.19,1,0.22,1)] md:top-20 md:bottom-auto md:left-5 md:z-[8000] md:max-h-[calc(100%-120px)] md:w-[calc(100%-40px)] md:max-w-[400px] max-md:bottom-5 max-md:left-2.5 max-md:w-[calc(100%-20px)] ${
-        isOpen
-          ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
-          : "pointer-events-none translate-y-6 scale-96 opacity-0"
+      initial={false}
+      animate={{ ...targetRect }}
+      transition={{
+        type: "spring",
+        stiffness: 320,
+        damping: 29,
+        mass: 0.85,
+      }}
+      style={{ zIndex: panelZIndex }}
+      className={`absolute overflow-hidden ${
+        isOpen ? "pointer-events-auto" : "pointer-events-none"
       }`}
     >
-      <CloseButton
-        aria-label="閉じる"
-        onPress={onClose}
-        className="absolute top-3 right-3 z-20"
-      />
-      <div className="relative border-b border-separator px-6 pt-5 pb-3.5">
-        {panelData.via && (
-          <div className="mb-1 pr-8 text-[11px] font-medium tracking-[0.02em] text-muted uppercase">
-            {panelData.via}
-          </div>
-        )}
-        <div className="flex items-baseline justify-between gap-2.5 pr-8">
-          <div className="text-xl leading-tight font-extrabold tracking-[-0.02em] whitespace-normal text-foreground [word-break:auto-phrase]">
-            {panelData.title}
+      <Surface
+        variant="default"
+        style={isExpanded ? { borderWidth: 0, boxShadow: "none" } : undefined}
+        className={`glass-surface-lg flex h-full w-full flex-col overflow-hidden rounded-[inherit] transition-[opacity,transform] duration-350 ease-[cubic-bezier(0.19,1,0.22,1)] ${
+          isOpen
+            ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
+            : "pointer-events-none translate-y-6 scale-96 opacity-0"
+        }`}
+      >
+        <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5">
+          {onToggleExpand && (
+            <CloseButton
+              aria-label={
+                isExpanded ? "元のサイズに戻す" : "画面いっぱいに表示"
+              }
+              aria-expanded={isExpanded}
+              onPress={onToggleExpand}
+            >
+              <span
+                className="material-symbols-rounded inline-flex items-center justify-center leading-none"
+                style={{ fontSize: "16px", width: "16px", height: "16px" }}
+                aria-hidden
+              >
+                {isExpanded ? "collapse_content" : "expand_content"}
+              </span>
+            </CloseButton>
+          )}
+          <CloseButton aria-label="閉じる" onPress={onClose} />
+        </div>
+
+        <div className="relative border-b border-separator px-6 pt-5 pb-3.5">
+          <div className={isExpanded ? "mx-auto w-full max-w-3xl" : ""}>
+            {panelData.via && (
+              <div className="mb-1 pr-14 text-[11px] font-medium tracking-[0.02em] text-muted uppercase">
+                {panelData.via}
+              </div>
+            )}
+            <div className="flex items-baseline justify-between gap-2.5 pr-14">
+              <div className="text-xl leading-tight font-extrabold tracking-[-0.02em] whitespace-normal text-foreground [word-break:auto-phrase]">
+                {panelData.title}
+              </div>
+            </div>
+            {panelData.office && (
+              <div className="mt-1 text-xs font-semibold text-muted">
+                {panelData.office}
+              </div>
+            )}
+            {selectedTrip && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {panelData.occupancyInfo && (
+                  <Chip
+                    variant="soft"
+                    color={panelData.occupancyInfo.chipColor}
+                  >
+                    <span
+                      className="material-icons-outlined text-[14px]"
+                      aria-hidden
+                    >
+                      {panelData.occupancyInfo.icon}
+                    </span>
+                    <Chip.Label>{panelData.occupancyInfo.label}</Chip.Label>
+                  </Chip>
+                )}
+                {panelData.speedText && (
+                  <Chip variant="soft" color="default">
+                    <span
+                      className="material-icons-outlined text-[14px]"
+                      aria-hidden
+                    >
+                      speed
+                    </span>
+                    <Chip.Label className="tabular-nums">
+                      {panelData.speedText}
+                    </Chip.Label>
+                  </Chip>
+                )}
+              </div>
+            )}
+            {isDebugMode && (selectedTrip || selectedStopId) && (
+              <Disclosure defaultExpanded={false} className="mt-2">
+                <Disclosure.Heading>
+                  <Disclosure.Trigger className="flex w-full items-center justify-between gap-2 text-left text-[11px] font-semibold text-muted">
+                    <span className="truncate font-mono">
+                      Debug ·{" "}
+                      {selectedTrip ? selectedTrip.tripId : selectedStopId}
+                    </span>
+                    <Disclosure.Indicator />
+                  </Disclosure.Trigger>
+                </Disclosure.Heading>
+                <Disclosure.Content>
+                  <Disclosure.Body className="px-0 pt-2 pb-0">
+                    <pre className="max-h-44 overflow-auto rounded-xl bg-surface-secondary/75 p-2 font-mono text-[11px] leading-snug break-words whitespace-pre-wrap text-foreground">
+                      {debugSummaryJson || "(no data)"}
+                    </pre>
+                  </Disclosure.Body>
+                </Disclosure.Content>
+              </Disclosure>
+            )}
           </div>
         </div>
-        {panelData.office && (
-          <div className="mt-1 text-xs font-semibold text-muted">
-            {panelData.office}
+
+        <ScrollShadow
+          ref={contentRef}
+          size={28}
+          className="panel-content min-h-0 flex-1 overflow-y-auto"
+        >
+          <div className={isExpanded ? "mx-auto w-full max-w-3xl" : ""}>
+            {panelData.items}
           </div>
-        )}
-        {selectedTrip && (
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            {panelData.occupancyInfo && (
-              <Chip variant="soft" color={panelData.occupancyInfo.chipColor}>
-                <span className="material-icons-outlined text-[14px]" aria-hidden>
-                  {panelData.occupancyInfo.icon}
-                </span>
-                <Chip.Label>{panelData.occupancyInfo.label}</Chip.Label>
-              </Chip>
-            )}
-            {panelData.speedText && (
-              <Chip variant="soft" color="default">
-                <span className="material-icons-outlined text-[14px]" aria-hidden>
-                  speed
-                </span>
-                <Chip.Label className="tabular-nums">
-                  {panelData.speedText}
-                </Chip.Label>
-              </Chip>
-            )}
-          </div>
-        )}
-        {isDebugMode && (selectedTrip || selectedStopId) && (
-          <Disclosure defaultExpanded={false} className="mt-2">
-            <Disclosure.Heading>
-              <Disclosure.Trigger className="flex w-full items-center justify-between gap-2 text-left text-[11px] font-semibold text-muted">
-                <span className="truncate font-mono">
-                  Debug ·{" "}
-                  {selectedTrip ? selectedTrip.tripId : selectedStopId}
-                </span>
-                <Disclosure.Indicator />
-              </Disclosure.Trigger>
-            </Disclosure.Heading>
-            <Disclosure.Content>
-              <Disclosure.Body className="px-0 pt-2 pb-0">
-                <pre className="max-h-44 overflow-auto rounded-xl bg-surface-secondary/75 p-2 font-mono text-[11px] leading-snug break-words whitespace-pre-wrap text-foreground">
-                  {debugSummaryJson || "(no data)"}
-                </pre>
-              </Disclosure.Body>
-            </Disclosure.Content>
-          </Disclosure>
-        )}
-      </div>
-      <ScrollShadow
-        ref={contentRef}
-        size={28}
-        className="panel-content min-h-0 flex-1 overflow-y-auto"
-      >
-        {panelData.items}
-      </ScrollShadow>
-    </Surface>
+        </ScrollShadow>
+      </Surface>
+    </motion.div>
   );
 };
 

@@ -255,6 +255,8 @@ function disposeBusMarker(marker: maplibregl.Marker): void {
 interface MapContainerProps {
   data: AppData;
   activeLayer: MapLayerType;
+  isAppReady?: boolean;
+  essentialReady?: boolean;
   isPanelOpen?: boolean;
   selectedTrip: PanelTrip | null;
   tripDetail?: TripDetailResponse | null;
@@ -275,6 +277,8 @@ interface MapContainerProps {
   onZoomChange: (zoom: number) => void;
   updateBuses?: () => void;
   setMapRef: (map: maplibregl.Map | null) => void;
+  onMapLoaded?: () => void;
+  onInitialBusesLoaded?: () => void;
   onSelectedBusTelemetry?: (
     tripId: string,
     speedKmh?: number,
@@ -365,6 +369,8 @@ function createBusMarkerElement(
 const MapContainer: React.FC<MapContainerProps> = ({
   data,
   activeLayer,
+  isAppReady = true,
+  essentialReady = true,
   isPanelOpen = false,
   selectedTrip,
   tripDetail,
@@ -375,6 +381,8 @@ const MapContainer: React.FC<MapContainerProps> = ({
   onMoveStart,
   onZoomChange,
   setMapRef,
+  onMapLoaded,
+  onInitialBusesLoaded,
   onSelectedBusTelemetry,
   onBoundsChange,
 }) => {
@@ -385,6 +393,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   const latestBusDataRef = useRef<Record<string, BusPosition>>({});
   const busRequestIdRef = useRef(0);
   const compactDisplayRef = useRef<boolean | null>(null);
+  const hasReportedInitialBusesRef = useRef(false);
 
   // 現在地マーカーと連打防止用フラグ
   const currentLocationMarkerRef = useRef<maplibregl.Marker | null>(null);
@@ -400,6 +409,16 @@ const MapContainer: React.FC<MapContainerProps> = ({
   useEffect(() => {
     onSelectedBusTelemetryRef.current = onSelectedBusTelemetry;
   }, [onSelectedBusTelemetry]);
+
+  const onMapLoadedRef = useRef(onMapLoaded);
+  useEffect(() => {
+    onMapLoadedRef.current = onMapLoaded;
+  }, [onMapLoaded]);
+
+  const onInitialBusesLoadedRef = useRef(onInitialBusesLoaded);
+  useEffect(() => {
+    onInitialBusesLoadedRef.current = onInitialBusesLoaded;
+  }, [onInitialBusesLoaded]);
 
   // 地図の準備完了状態を管理
   const isStyleLoadedRef = useRef(false);
@@ -514,7 +533,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
     }
 
     const map = mapRef.current;
-    if (!map || !isStyleLoadedRef.current) return;
+    if (!map) return;
     const requestId = ++busRequestIdRef.current;
 
     try {
@@ -635,6 +654,11 @@ const MapContainer: React.FC<MapContainerProps> = ({
             delete latestBusDataRef.current[tripId];
           }
         });
+      }
+
+      if (!hasReportedInitialBusesRef.current) {
+        hasReportedInitialBusesRef.current = true;
+        onInitialBusesLoadedRef.current?.();
       }
     } catch (error) {
       console.error("Failed to fetch bus positions:", error);
@@ -940,6 +964,25 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
     mapRef.current = map;
 
+    try {
+      updateBusesRef.current();
+    } catch {
+      // noop
+    }
+    try {
+      const b = map.getBounds();
+      if (b && typeof onBoundsChangeRef.current === "function") {
+        onBoundsChangeRef.current(
+          b.getSouth(),
+          b.getNorth(),
+          b.getWest(),
+          b.getEast(),
+        );
+      }
+    } catch {
+      // noop
+    }
+
     map.on("style.load", () => {
       isStyleLoadedRef.current = true;
       ensureArrowImage(map);
@@ -970,32 +1013,22 @@ const MapContainer: React.FC<MapContainerProps> = ({
       isStyleLoadedRef.current = true;
       forceUpdate({});
       ensureArrowImage(map);
+      onMapLoadedRef.current?.();
 
       try {
         updateStopMarkersRef.current();
       } catch {
         // noop
       }
-      try {
-        updateBusesRef.current();
-      } catch {
-        // noop
+      if (!hasReportedInitialBusesRef.current) {
+        try {
+          updateBusesRef.current();
+        } catch {
+          // noop
+        }
       }
       try {
         drawRouteLineRef.current();
-      } catch {
-        // noop
-      }
-      try {
-        const b = map.getBounds();
-        if (b && typeof onBoundsChangeRef.current === "function") {
-          onBoundsChangeRef.current(
-            b.getSouth(),
-            b.getNorth(),
-            b.getWest(),
-            b.getEast(),
-          );
-        }
       } catch {
         // noop
       }
@@ -1093,6 +1126,34 @@ const MapContainer: React.FC<MapContainerProps> = ({
     updateBusesRef.current();
   }, [simTime]);
 
+  useEffect(() => {
+    if (!isStyleLoadedRef.current) return;
+    updateStopMarkersRef.current();
+  }, [data.stops]);
+
+  useEffect(() => {
+    if (!essentialReady) return;
+    if (!hasReportedInitialBusesRef.current) {
+      updateBusesRef.current();
+    }
+    const map = mapRef.current;
+    if (map && typeof onBoundsChangeRef.current === "function") {
+      try {
+        const b = map.getBounds();
+        if (b) {
+          onBoundsChangeRef.current(
+            b.getSouth(),
+            b.getNorth(),
+            b.getWest(),
+            b.getEast(),
+          );
+        }
+      } catch {
+        // noop
+      }
+    }
+  }, [essentialReady]);
+
   const isUsingMapTiler =
     isMapTilerLayer(activeLayer) && Boolean(MAPTILER_API_KEY);
   const isDarkBasemap =
@@ -1108,82 +1169,86 @@ const MapContainer: React.FC<MapContainerProps> = ({
         data-dark-basemap={isDarkBasemap ? "true" : "false"}
       ></div>
 
-      {/* 現在地ボタン */}
-      <div
-        id="location-control-container"
-        className={`absolute right-5 bottom-10 z-[6500] transition-[bottom,transform,opacity,visibility] duration-300 ease-[cubic-bezier(0.19,1,0.22,1)] max-md:right-3.5 max-md:bottom-9 max-md:[body.is-searching_&]:pointer-events-none max-md:[body.is-searching_&]:invisible max-md:[body.is-searching_&]:opacity-0 ${
-          isPanelOpen
-            ? "max-md:pointer-events-none max-md:invisible max-md:translate-y-2 max-md:opacity-0"
-            : ""
-        }`}
-      >
-        <Button
-          isIconOnly
-          size="lg"
-          variant="tertiary"
-          aria-label="現在地に移動"
-          onPress={handleLocateUser}
-          className={`glass-surface rounded-2xl ${hasLocated ? "text-accent!" : ""}`}
-        >
-          <span className="material-icons-outlined text-[24px]" aria-hidden>
-            my_location
-          </span>
-        </Button>
-      </div>
+      {isAppReady && (
+        <>
+          {/* 現在地ボタン */}
+          <div
+            id="location-control-container"
+            className={`absolute right-5 bottom-10 z-[6500] transition-[bottom,transform,opacity,visibility] duration-300 ease-[cubic-bezier(0.19,1,0.22,1)] max-md:right-3.5 max-md:bottom-9 max-md:[body.is-searching_&]:pointer-events-none max-md:[body.is-searching_&]:invisible max-md:[body.is-searching_&]:opacity-0 ${
+              isPanelOpen
+                ? "max-md:pointer-events-none max-md:invisible max-md:translate-y-2 max-md:opacity-0"
+                : ""
+            }`}
+          >
+            <Button
+              isIconOnly
+              size="lg"
+              variant="tertiary"
+              aria-label="現在地に移動"
+              onPress={handleLocateUser}
+              className={`glass-surface rounded-2xl ${hasLocated ? "text-accent!" : ""}`}
+            >
+              <span className="material-icons-outlined text-[24px]" aria-hidden>
+                my_location
+              </span>
+            </Button>
+          </div>
 
-      {isUsingMapTiler ? (
-        <div
-          aria-live="polite"
-          className={`glass-surface absolute right-2 bottom-2 z-[6500] inline-flex h-6.5 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-medium transition-opacity duration-250 max-md:right-1.5 max-md:bottom-1.5 max-md:h-6 max-md:px-2 ${
-            isPanelOpen
-              ? "max-md:pointer-events-none max-md:invisible max-md:translate-y-1 max-md:opacity-0"
-              : ""
-          }`}
-        >
-          <a
-            href="https://www.maptiler.com/copyright/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-inherit no-underline hover:underline"
-          >
-            © MapTiler
-          </a>
-          <span aria-hidden className="opacity-50">
-            ·
-          </span>
-          <a
-            href="https://www.openstreetmap.org/copyright"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-inherit no-underline hover:underline"
-          >
-            © OpenStreetMap contributors
-          </a>
-        </div>
-      ) : (
-        <Button
-          variant="tertiary"
-          size="sm"
-          aria-live="polite"
-          onPress={() =>
-            window.open(
-              activeLayer === "osm" || isMapTilerLayer(activeLayer)
-                ? "https://www.openstreetmap.org/copyright"
-                : "https://maps.gsi.go.jp/development/ichiran.html",
-              "_blank",
-              "noopener,noreferrer",
-            )
-          }
-          className={`glass-surface absolute right-2 bottom-2 z-[6500] h-6.5 px-2.5 text-[11px] transition-opacity duration-250 max-md:right-1.5 max-md:bottom-1.5 max-md:h-6 max-md:px-2 ${
-            isPanelOpen
-              ? "max-md:pointer-events-none max-md:invisible max-md:translate-y-1 max-md:opacity-0"
-              : ""
-          }`}
-        >
-          {activeLayer === "osm" || isMapTilerLayer(activeLayer)
-            ? "© OpenStreetMap contributors"
-            : "地理院タイル"}
-        </Button>
+          {isUsingMapTiler ? (
+            <div
+              aria-live="polite"
+              className={`glass-surface absolute right-2 bottom-2 z-[6500] inline-flex h-6.5 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-medium transition-opacity duration-250 max-md:right-1.5 max-md:bottom-1.5 max-md:h-6 max-md:px-2 ${
+                isPanelOpen
+                  ? "max-md:pointer-events-none max-md:invisible max-md:translate-y-1 max-md:opacity-0"
+                  : ""
+              }`}
+            >
+              <a
+                href="https://www.maptiler.com/copyright/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-inherit no-underline hover:underline"
+              >
+                © MapTiler
+              </a>
+              <span aria-hidden className="opacity-50">
+                ·
+              </span>
+              <a
+                href="https://www.openstreetmap.org/copyright"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-inherit no-underline hover:underline"
+              >
+                © OpenStreetMap contributors
+              </a>
+            </div>
+          ) : (
+            <Button
+              variant="tertiary"
+              size="sm"
+              aria-live="polite"
+              onPress={() =>
+                window.open(
+                  activeLayer === "osm" || isMapTilerLayer(activeLayer)
+                    ? "https://www.openstreetmap.org/copyright"
+                    : "https://maps.gsi.go.jp/development/ichiran.html",
+                  "_blank",
+                  "noopener,noreferrer",
+                )
+              }
+              className={`glass-surface absolute right-2 bottom-2 z-[6500] h-6.5 px-2.5 text-[11px] transition-opacity duration-250 max-md:right-1.5 max-md:bottom-1.5 max-md:h-6 max-md:px-2 ${
+                isPanelOpen
+                  ? "max-md:pointer-events-none max-md:invisible max-md:translate-y-1 max-md:opacity-0"
+                  : ""
+              }`}
+            >
+              {activeLayer === "osm" || isMapTilerLayer(activeLayer)
+                ? "© OpenStreetMap contributors"
+                : "地理院タイル"}
+            </Button>
+          )}
+        </>
       )}
       {isUpdatesPaused && (
         <div className="absolute inset-0 z-[100] flex items-center justify-center bg-[var(--backdrop)] backdrop-blur-[2px]">
