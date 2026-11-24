@@ -1,4 +1,5 @@
 import type {
+  AlertsOverviewResponse,
   AppData,
   BusPosition,
   CalendarData,
@@ -138,4 +139,12 @@ export async function fetchAllStops(): Promise<StopsData> {
     throw new Error(`all stops fetch failed (${res.status})`);
   }
   return res.json();
+}
+
+export async function fetchAlertsOverview(): Promise<AlertsOverviewResponse> {
+  const res = await fetch(`${API_BASE}/alerts`);
+  if (!res.ok) {
+    throw new Error(`alerts fetch failed (${res.status})`);
+  }
+  return res.json() as Promise<AlertsOverviewResponse>;
 }

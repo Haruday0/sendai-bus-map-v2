@@ -1,12 +1,14 @@
 import {
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useCallback,
 } from "react";
 import type * as maplibregl from "maplibre-gl";
 import {
+  Badge,
   Button,
   Checkbox,
   Disclosure,
@@ -16,6 +18,7 @@ import {
   Surface,
 } from "@heroui/react";
 import {
+  fetchAlertsOverview,
   fetchAllStops,
   fetchStopsByBounds,
   loadEssentialData,
@@ -24,10 +27,14 @@ import {
 } from "./dataLoader";
 import { getPanelMapPadding } from "./utils";
 import type {
+  AlertsOverviewResponse,
   AppData,
+  DebugMockOptions,
+  DisruptedTripNotice,
   LiveTripTelemetry,
   MapLayerType,
   PanelTrip,
+  ServiceAlert,
   StopsData,
   TripDetailResponse,
   TimetablesData,
@@ -41,6 +48,8 @@ import BusPanel from "./components/BusPanel";
 import LayerControl from "./components/LayerControl";
 import ThemeToggleButton from "./components/ThemeToggleButton";
 import AboutModal from "./components/AboutModal";
+import ServiceAlertsModal from "./components/ServiceAlertsModal";
+import { DEBUG_MOCK_ALERTS } from "./alertConstants";
 import StartupOverlay, {
   type StartupTaskItem,
 } from "./components/StartupOverlay";
@@ -51,6 +60,29 @@ const isDebugEnabledFromSearch = (search: string): boolean => {
   const raw = (params.get("debug") || "").trim().toLowerCase();
   if (raw === "" || raw === "1" || raw === "true" || raw === "on") return true;
   return false;
+};
+
+const mergeRouteTripFlags = (
+  target: Record<string, Record<string, boolean>>,
+  source?: Record<string, Record<string, boolean>>,
+) => {
+  if (!source) return;
+  Object.keys(source).forEach((rid) => {
+    target[rid] = { ...(target[rid] || {}), ...source[rid] };
+  });
+};
+
+const dedupeServiceAlerts = (alerts: ServiceAlert[]): ServiceAlert[] => {
+  const seen = new Set<string>();
+  const result: ServiceAlert[] = [];
+  for (const alert of alerts) {
+    const key =
+      alert.id || `${alert.header_text ?? ""}|${alert.description_text ?? ""}`;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(alert);
+  }
+  return result;
 };
 
 function App() {
@@ -73,6 +105,19 @@ function App() {
     Record<string, Record<string, number>>
   >({});
 
+  // 選択中バス停の運休・通過・運行情報
+  const [stopStatus, setStopStatus] = useState<{
+    stopId: string | null;
+    canceledTrips: Record<string, Record<string, boolean>>;
+    skippedTrips: Record<string, Record<string, boolean>>;
+    alerts: ServiceAlert[];
+  }>({
+    stopId: null,
+    canceledTrips: {},
+    skippedTrips: {},
+    alerts: [],
+  });
+
   // --- 地図インスタンスの参照 (FlyTo用) ---
   const mapRef = useRef<maplibregl.Map | null>(null);
   const boundsRequestIdRef = useRef(0);
@@ -90,6 +135,10 @@ function App() {
   const [isSearching, setIsSearching] = useState(false);
   const [zoom, setZoom] = useState(15);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
+  const [isAlertsOpen, setIsAlertsOpen] = useState(false);
+  const [alertsOverview, setAlertsOverview] =
+    useState<AlertsOverviewResponse | null>(null);
+  const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
   const [isDebugMode, setIsDebugMode] = useState(() =>
     isDebugEnabledFromSearch(window.location.search),
   );
@@ -106,6 +155,11 @@ function App() {
 
   const [simSeconds, setSimSeconds] = useState(8 * 3600 + 30 * 60);
   const [enableSimTime, setEnableSimTime] = useState(false);
+  const [debugMockOptions, setDebugMockOptions] = useState<DebugMockOptions>({
+    alert: false,
+    canceled: false,
+    skipped: false,
+  });
 
   const formatSimTime = (totalSec: number) => {
     const h = Math.floor(totalSec / 3600);
@@ -356,6 +410,9 @@ function App() {
         if (cancelled) return;
 
         const mergedDelays: Record<string, Record<string, number>> = {};
+        const mergedCanceledTrips: Record<string, Record<string, boolean>> = {};
+        const mergedSkippedTrips: Record<string, Record<string, boolean>> = {};
+        const collectedAlerts: ServiceAlert[] = [];
         const mergedTimetables: TimetablesData = {};
 
         timetableResults.forEach((res) => {
@@ -371,6 +428,12 @@ function App() {
             });
           }
 
+          mergeRouteTripFlags(mergedCanceledTrips, res.canceled_trips);
+          mergeRouteTripFlags(mergedSkippedTrips, res.skipped_trips);
+          if (res.alerts?.length) {
+            collectedAlerts.push(...res.alerts);
+          }
+
           if (res.timetables) {
             const timetables = res.timetables;
             Object.keys(timetables).forEach((rid) => {
@@ -380,6 +443,13 @@ function App() {
               };
             });
           }
+        });
+
+        setStopStatus({
+          stopId: selectedStopId,
+          canceledTrips: mergedCanceledTrips,
+          skippedTrips: mergedSkippedTrips,
+          alerts: dedupeServiceAlerts(collectedAlerts),
         });
 
         setStopDelays((prev) => {
@@ -522,6 +592,12 @@ function App() {
                 delays: timetableData.delays ?? {},
                 timetables: { ...prev.timetables, ...timetableData.timetables },
               }));
+              setStopStatus({
+                stopId: firstStopId,
+                canceledTrips: timetableData.canceled_trips ?? {},
+                skippedTrips: timetableData.skipped_trips ?? {},
+                alerts: dedupeServiceAlerts(timetableData.alerts ?? []),
+              });
               setTimetableReadyForStop(firstStopId);
             } catch (e) {
               console.error("時刻表の先読みに失敗:", e);
@@ -589,6 +665,12 @@ function App() {
     setSelectedTrip(null);
     setLiveTripTelemetry(null);
     setTripDetail(null);
+    setStopStatus({
+      stopId: null,
+      canceledTrips: {},
+      skippedTrips: {},
+      alerts: [],
+    });
     setIsPanelExpanded(false);
     setIsSearching(false);
   }, []);
@@ -651,8 +733,149 @@ function App() {
 
   // モーダル展開の初回描画前から地図上マーカーを隠し、開き途中の透過映り込みを防ぐ
   useLayoutEffect(() => {
-    document.body.classList.toggle("modal-open", isAboutOpen);
-  }, [isAboutOpen]);
+    document.body.classList.toggle("modal-open", isAboutOpen || isAlertsOpen);
+  }, [isAboutOpen, isAlertsOpen]);
+
+  const refreshAlertsOverview = useCallback(async () => {
+    setIsLoadingAlerts(true);
+    try {
+      const res = await fetchAlertsOverview();
+      setAlertsOverview(res);
+    } catch (e) {
+      console.error("failed to fetch alerts overview", e);
+    } finally {
+      setIsLoadingAlerts(false);
+    }
+  }, []);
+
+  const handleOpenAlertsModal = useCallback(() => {
+    setIsAlertsOpen(true);
+    void refreshAlertsOverview();
+  }, [refreshAlertsOverview]);
+
+  useEffect(() => {
+    if (!essentialLoaded) return;
+    let cancelled = false;
+
+    const pollAlerts = async () => {
+      try {
+        const res = await fetchAlertsOverview();
+        if (!cancelled) {
+          setAlertsOverview(res);
+        }
+      } catch (e) {
+        console.error("failed to fetch alerts overview", e);
+      }
+    };
+
+    void pollAlerts();
+    const timer = setInterval(pollAlerts, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [essentialLoaded]);
+
+  const handleJumpToStopFromAlert = useCallback(
+    (stopId: string, lat?: number, lng?: number) => {
+      setIsAlertsOpen(false);
+      const stopObj = allStops[stopId] ?? dataStopsRef.current[stopId];
+      const targetLat = lat || stopObj?.lat;
+      const targetLng = lng || stopObj?.lng;
+      if (stopObj) {
+        setData((prev) => ({
+          ...prev,
+          stops: { ...prev.stops, [stopId]: stopObj },
+        }));
+      }
+      if (targetLat && targetLng && mapRef.current) {
+        mapRef.current.flyTo({
+          center: [targetLng, targetLat],
+          zoom: 17,
+          essential: true,
+          padding: getPanelMapPadding(true),
+        });
+        setZoom(17);
+      }
+      setSelectedTrip(null);
+      setLiveTripTelemetry(null);
+      setTripDetail(null);
+      setSelectedStopId(stopId);
+      setIsSearching(false);
+    },
+    [allStops],
+  );
+
+  const handleJumpToTripFromAlert = useCallback(
+    (routeId: string, tripId: string, lat?: number, lng?: number) => {
+      setIsAlertsOpen(false);
+      handleBusClick(tripId, routeId);
+      if (lat && lng && mapRef.current) {
+        mapRef.current.flyTo({
+          center: [lng, lat],
+          zoom: Math.max(zoomRef.current, 14.5),
+          essential: true,
+          padding: getPanelMapPadding(true),
+        });
+      }
+    },
+    [handleBusClick],
+  );
+
+  const effectiveAlerts = useMemo<ServiceAlert[]>(() => {
+    const base = alertsOverview?.alerts ?? [];
+    if (isDebugMode && debugMockOptions.alert) {
+      return [...DEBUG_MOCK_ALERTS, ...base];
+    }
+    return base;
+  }, [alertsOverview?.alerts, isDebugMode, debugMockOptions.alert]);
+
+  const effectiveDisruptedTrips = useMemo<DisruptedTripNotice[]>(() => {
+    const base = alertsOverview?.disrupted_trips ?? [];
+    if (!isDebugMode) return base;
+    const extras: DisruptedTripNotice[] = [];
+    if (debugMockOptions.canceled) {
+      extras.push({
+        trip_id: "50_3_35002120",
+        route_id: "10360",
+        route_name: "X870",
+        route_color: "A3D742",
+        headsign: "【ダミー】国見ケ丘・中山台・実沢(営)",
+        start_time: "13:45:00",
+        first_stop_id: "50_56",
+        first_stop_lat: 38.260292,
+        first_stop_lng: 140.880814,
+        canceled: true,
+      });
+    }
+    if (debugMockOptions.skipped) {
+      extras.push({
+        trip_id: "50_3_35002220",
+        route_id: "10320",
+        route_name: "S880",
+        route_color: "A3D742",
+        headsign: "【ダミー】仙台駅",
+        start_time: "13:05:00",
+        canceled: false,
+        skipped_stops: [
+          { stop_id: "50_56", name: "仙台駅前" },
+          { stop_id: "53_50", name: "あおば通駅" },
+        ],
+      });
+    }
+    return [...extras, ...base];
+  }, [
+    alertsOverview?.disrupted_trips,
+    isDebugMode,
+    debugMockOptions.canceled,
+    debugMockOptions.skipped,
+  ]);
+
+  const totalNoticeCount =
+    effectiveAlerts.length + effectiveDisruptedTrips.length;
+  const hasSevereNotice =
+    effectiveAlerts.some((a) => a.effect === "NO_SERVICE") ||
+    effectiveDisruptedTrips.some((t) => t.canceled);
 
   useEffect(() => {
     const syncDebugState = () => {
@@ -685,6 +908,41 @@ function App() {
             id="layer-control-container"
             className="absolute top-5 right-5 z-[9000] flex flex-col items-center gap-2 transition-[opacity,visibility] duration-250 max-md:top-[65px] max-md:right-2.5 max-md:[body.is-searching_&]:pointer-events-none max-md:[body.is-searching_&]:invisible max-md:[body.is-searching_&]:opacity-0"
           >
+            <span className="inline-flex" title="運行情報・お知らせ">
+              <Badge.Anchor>
+                <Button
+                  isIconOnly
+                  variant="tertiary"
+                  aria-label={
+                    totalNoticeCount > 0
+                      ? `運行情報・お知らせ（${totalNoticeCount}件）`
+                      : "運行情報・お知らせ"
+                  }
+                  className="glass-surface rounded-full"
+                  onPress={handleOpenAlertsModal}
+                >
+                  <span
+                    className="material-icons-outlined text-[22px]"
+                    aria-hidden
+                  >
+                    {totalNoticeCount > 0
+                      ? "notifications_active"
+                      : "notifications"}
+                  </span>
+                </Button>
+                {totalNoticeCount > 0 && (
+                  <Badge
+                    color={hasSevereNotice ? "danger" : "warning"}
+                    size="sm"
+                    placement="top-right"
+                  >
+                    <Badge.Label className="tabular-nums">
+                      {totalNoticeCount > 99 ? "99+" : totalNoticeCount}
+                    </Badge.Label>
+                  </Badge>
+                )}
+              </Badge.Anchor>
+            </span>
             <LayerControl
               activeLayer={activeLayer}
               onLayerChange={setActiveLayer}
@@ -763,6 +1021,72 @@ function App() {
                         </div>
                       )}
                     </div>
+
+                    <Separator />
+
+                    {/* 💡 運休・通過・Alert ダミー表示 */}
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-[11px] font-bold text-muted">
+                        ダミー表示テスト
+                      </span>
+                      <Checkbox
+                        variant="secondary"
+                        isSelected={debugMockOptions.alert}
+                        onChange={(checked) =>
+                          setDebugMockOptions((prev) => ({
+                            ...prev,
+                            alert: checked,
+                          }))
+                        }
+                      >
+                        <Checkbox.Content className="gap-2">
+                          <Checkbox.Control>
+                            <Checkbox.Indicator />
+                          </Checkbox.Control>
+                          <Label className="text-[11px] font-bold text-foreground">
+                            運行情報 (Alert)
+                          </Label>
+                        </Checkbox.Content>
+                      </Checkbox>
+                      <Checkbox
+                        variant="secondary"
+                        isSelected={debugMockOptions.canceled}
+                        onChange={(checked) =>
+                          setDebugMockOptions((prev) => ({
+                            ...prev,
+                            canceled: checked,
+                          }))
+                        }
+                      >
+                        <Checkbox.Content className="gap-2">
+                          <Checkbox.Control>
+                            <Checkbox.Indicator />
+                          </Checkbox.Control>
+                          <Label className="text-[11px] font-bold text-foreground">
+                            運休 (CANCELED)
+                          </Label>
+                        </Checkbox.Content>
+                      </Checkbox>
+                      <Checkbox
+                        variant="secondary"
+                        isSelected={debugMockOptions.skipped}
+                        onChange={(checked) =>
+                          setDebugMockOptions((prev) => ({
+                            ...prev,
+                            skipped: checked,
+                          }))
+                        }
+                      >
+                        <Checkbox.Content className="gap-2">
+                          <Checkbox.Control>
+                            <Checkbox.Indicator />
+                          </Checkbox.Control>
+                          <Label className="text-[11px] font-bold text-foreground">
+                            通過 (SKIPPED)
+                          </Label>
+                        </Checkbox.Content>
+                      </Checkbox>
+                    </div>
                   </Disclosure.Body>
                 </Disclosure.Content>
               </Disclosure>
@@ -778,7 +1102,17 @@ function App() {
         liveTripTelemetry={liveTripTelemetry}
         tripDetail={tripDetail}
         isDebugMode={isDebugMode}
+        debugMockOptions={isDebugMode ? debugMockOptions : undefined}
         stopDelays={stopDelays}
+        stopCanceledTrips={
+          stopStatus.stopId === selectedStopId ? stopStatus.canceledTrips : {}
+        }
+        stopSkippedTrips={
+          stopStatus.stopId === selectedStopId ? stopStatus.skippedTrips : {}
+        }
+        stopAlerts={
+          stopStatus.stopId === selectedStopId ? stopStatus.alerts : []
+        }
         zoom={zoom}
         timetableReadyForStop={timetableReadyForStop}
         isExpanded={isPanelExpanded}
@@ -818,6 +1152,18 @@ function App() {
 
       {/* 💡 ページ内ウィンドウ */}
       <AboutModal isOpen={isAboutOpen} onClose={() => setIsAboutOpen(false)} />
+      <ServiceAlertsModal
+        isOpen={isAlertsOpen}
+        onClose={() => setIsAlertsOpen(false)}
+        alerts={effectiveAlerts}
+        disruptedTrips={effectiveDisruptedTrips}
+        isLoading={isLoadingAlerts}
+        lastFetchedAt={alertsOverview?.fetched_at}
+        realtimeError={alertsOverview?.realtime_error}
+        onRefresh={refreshAlertsOverview}
+        onSelectStop={handleJumpToStopFromAlert}
+        onSelectTrip={handleJumpToTripFromAlert}
+      />
 
       <MapContainer
         data={data}

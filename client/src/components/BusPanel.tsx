@@ -8,6 +8,7 @@ import React, {
 import { motion } from "motion/react";
 // use Material Icons font for simple UI icons
 import {
+  Alert,
   Card,
   Chip,
   CloseButton,
@@ -19,9 +20,11 @@ import {
 } from "@heroui/react";
 import type {
   AppData,
+  DebugMockOptions,
   LiveTripTelemetry,
   PanelTrip,
   Arrival,
+  ServiceAlert,
   TripDetailResponse,
 } from "../types";
 import {
@@ -32,6 +35,8 @@ import {
 } from "../utils";
 import { fetchBusPositions } from "../dataLoader";
 import { Timeline, TimelineItem } from "./Timeline";
+import { DEBUG_MOCK_ALERTS } from "../alertConstants";
+import { RouteBadgeChip, ServiceAlertsList } from "./ServiceAlertList";
 
 /** パネル内のデータ取得中に表示する共通スピナー */
 const PanelLoadingState: React.FC<{ label: string }> = ({ label }) => (
@@ -46,30 +51,28 @@ const PanelEmptyState: React.FC<{ title: string }> = ({ title }) => (
   <EmptyState className="py-10 text-center">{title}</EmptyState>
 );
 
-/** 系統番号を公式カラー付き HeroUI Chip で表示する共通バッジ */
-const RouteBadgeChip: React.FC<{
-  label: string;
-  color: string;
-  size?: "header" | "row";
-}> = ({ label, color, size = "row" }) => (
-  <Chip
-    size={size === "header" ? "md" : "sm"}
-    className={`shrink-0 font-extrabold tracking-[0.02em] ${
-      size === "header" ? "text-sm" : "text-[13px]"
-    }`}
-    style={{ backgroundColor: color, color: "#1b4406" }}
-  >
-    <Chip.Label>{label}</Chip.Label>
-  </Chip>
-);
-
 /** 遅延時でも予測時刻を縦中央に揃える時刻表示 */
 const PanelTimeDisplay: React.FC<{
   scheduledTime: string;
   estimatedTime: string | null;
   isPast: boolean;
-}> = ({ scheduledTime, estimatedTime, isPast }) => {
+  isStruckThrough?: boolean;
+}> = ({
+  scheduledTime,
+  estimatedTime,
+  isPast,
+  isStruckThrough = false,
+}) => {
   const timeText = scheduledTime ? scheduledTime.substring(0, 5) : "--:--";
+  if (isStruckThrough) {
+    return (
+      <div className="flex min-h-10 w-full items-center justify-center [font-feature-settings:'tnum']">
+        <del className="text-[16px] leading-none font-bold tracking-[-0.03em] whitespace-nowrap text-muted line-through decoration-2">
+          {timeText}
+        </del>
+      </div>
+    );
+  }
   if (estimatedTime) {
     return (
       <div className="relative flex min-h-10 w-full items-center justify-center [font-feature-settings:'tnum']">
@@ -152,7 +155,11 @@ interface BusPanelProps {
   liveTripTelemetry?: LiveTripTelemetry | null;
   tripDetail: TripDetailResponse | null;
   isDebugMode: boolean;
+  debugMockOptions?: DebugMockOptions;
   stopDelays: Record<string, Record<string, number>>;
+  stopCanceledTrips?: Record<string, Record<string, boolean>>;
+  stopSkippedTrips?: Record<string, Record<string, boolean>>;
+  stopAlerts?: ServiceAlert[];
   zoom: number;
   timetableReadyForStop?: string | null;
   isExpanded?: boolean;
@@ -236,7 +243,11 @@ const BusPanel: React.FC<BusPanelProps> = ({
   liveTripTelemetry,
   tripDetail,
   isDebugMode,
+  debugMockOptions,
   stopDelays,
+  stopCanceledTrips,
+  stopSkippedTrips,
+  stopAlerts,
   zoom,
   timetableReadyForStop,
   isExpanded = false,
@@ -378,6 +389,9 @@ const BusPanel: React.FC<BusPanelProps> = ({
           speed_kmh: liveSpeedKmh ?? null,
           occupancy_status: liveOccupancyStatus ?? null,
           trip_delay: tripDetail?.trip_delay ?? 0,
+          canceled: tripDetail?.canceled ?? false,
+          skipped_stops: tripDetail?.skipped_stops ?? [],
+          alerts_count: tripDetail?.alerts?.length ?? 0,
           stops_count: tripDetail?.trip?.stops?.length ?? 0,
           service_id: serviceId,
           office_name: officeId ? (data.extra.offices[officeId] ?? null) : null,
@@ -395,12 +409,23 @@ const BusPanel: React.FC<BusPanelProps> = ({
         (acc, routeDelays) => acc + Object.keys(routeDelays).length,
         0,
       );
+      const canceledTripsCount = Object.values(stopCanceledTrips ?? {}).reduce(
+        (acc, routeMap) => acc + Object.keys(routeMap).length,
+        0,
+      );
+      const skippedTripsCount = Object.values(stopSkippedTrips ?? {}).reduce(
+        (acc, routeMap) => acc + Object.keys(routeMap).length,
+        0,
+      );
       return JSON.stringify(
         {
           selected_stop_id: selectedStopId,
           zoom: zoom.toFixed(2),
           timetable_ready: timetableReadyForStop === selectedStopId,
           related_delays_count: relatedDelaysCount,
+          canceled_trips_count: canceledTripsCount,
+          skipped_trips_count: skippedTripsCount,
+          alerts_count: stopAlerts?.length ?? 0,
           stop,
           today_ymd: todayYmd,
         },
@@ -424,6 +449,9 @@ const BusPanel: React.FC<BusPanelProps> = ({
     data.calendar,
     data.stops,
     stopDelays,
+    stopCanceledTrips,
+    stopSkippedTrips,
+    stopAlerts,
     zoom,
     timetableReadyForStop,
   ]);
@@ -433,6 +461,8 @@ const BusPanel: React.FC<BusPanelProps> = ({
     let via = "";
     let office = "";
     let speedText = "";
+    let isTripCanceled = false;
+    let skippedStopsCount = 0;
     let items: React.ReactNode[] = [];
     let occupancyInfo: {
       icon: "group" | "group_off";
@@ -447,6 +477,10 @@ const BusPanel: React.FC<BusPanelProps> = ({
       // 便詳細表示モード
       const trip = tripDetail.trip;
       const routeName = tripDetail.route_name;
+      isTripCanceled =
+        Boolean(tripDetail.canceled) ||
+        (isDebugMode && Boolean(debugMockOptions?.canceled));
+      const skippedStopSet = new Set(tripDetail.skipped_stops ?? []);
       // 💡 tripDetail の正式なカラーを最優先で使用
       const routeColor = tripDetail.route_color
         ? `#${tripDetail.route_color.replace(/^#/, "")}`
@@ -500,30 +534,51 @@ const BusPanel: React.FC<BusPanelProps> = ({
       }
       initialTargetId = nextStopId ? `stop-${nextStopId}` : null;
 
+      if (isDebugMode && debugMockOptions?.skipped && trip.stops.length > 0) {
+        const mockSkipStopId =
+          (nextStopId &&
+          trip.stops.some((st) => st.stop_id === nextStopId)
+            ? nextStopId
+            : trip.stops[Math.min(1, trip.stops.length - 1)].stop_id) ?? null;
+        if (mockSkipStopId) {
+          skippedStopSet.add(mockSkipStopId);
+        }
+      }
+
+      skippedStopsCount = trip.stops.filter((st) =>
+        skippedStopSet.has(st.stop_id),
+      ).length;
+
       const stopItems = trip.stops.map((st, index) => {
         const s = tripDetail.stops[st.stop_id];
+        const isSkipped = skippedStopSet.has(st.stop_id);
 
         // サーバーから渡された本当の遅延秒数を取得
-        const delay = isRealtimeOnlyTrip
-          ? 0
-          : (tripDetail.delays?.[st.stop_id] ?? 0);
+        const delay =
+          isRealtimeOnlyTrip || isTripCanceled || isSkipped
+            ? 0
+            : (tripDetail.delays?.[st.stop_id] ?? 0);
         const estimatedSec = st.time ? timeToSec(st.time) + delay : 0;
         const isPast = isRealtimeOnlyTrip
           ? nextStopIndex >= 0
             ? index < nextStopIndex
             : false
           : estimatedSec < nowSec;
-        const hasDelay = !isRealtimeOnlyTrip && !isPast && delay >= 60; // 1分以上なら遅延扱い
+        const hasDelay =
+          !isRealtimeOnlyTrip && !isTripCanceled && !isSkipped && !isPast && delay >= 60; // 1分以上なら遅延扱い
         const estimatedTime =
           hasDelay && st.time ? addDelayToTime(st.time, delay) : null;
 
         const isHighlight = st.stop_id === selectedTrip.highlightId;
+        const isStruckThrough = isTripCanceled || isSkipped;
 
         return (
           <TimelineItem
             key={index}
             id={`stop-${st.stop_id}`}
             isPast={isPast}
+            isSkipped={isSkipped}
+            isCanceled={isTripCanceled}
             isHighlighted={isHighlight}
             isFirst={index === 0}
             isLast={index === trip.stops.length - 1}
@@ -532,31 +587,47 @@ const BusPanel: React.FC<BusPanelProps> = ({
                 scheduledTime={st.time}
                 estimatedTime={estimatedTime}
                 isPast={isPast}
+                isStruckThrough={isStruckThrough}
               />
             }
           >
-            {s ? (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onFlyToStop(s.lng, s.lat);
-                }}
-                className={`w-fit cursor-pointer bg-transparent p-0 text-left text-[15px] leading-snug font-bold underline decoration-muted/45 decoration-[1.5px] underline-offset-4 transition-colors hover:text-accent hover:decoration-accent focus-visible:outline-2 focus-visible:outline-focus active:opacity-75 ${
-                  isPast ? "text-muted" : "text-foreground"
-                }`}
-              >
-                {s.name}
-              </button>
-            ) : (
-              <div
-                className={`text-[15px] leading-snug font-bold ${
-                  isPast ? "text-muted" : "text-foreground"
-                }`}
-              >
-                ...
-              </div>
-            )}
+            <div className="flex flex-wrap items-center gap-1.5">
+              {s ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onFlyToStop(s.lng, s.lat);
+                  }}
+                  className={`w-fit cursor-pointer bg-transparent p-0 text-left text-[15px] leading-snug font-bold underline decoration-muted/45 decoration-[1.5px] underline-offset-4 transition-colors hover:text-accent hover:decoration-accent focus-visible:outline-2 focus-visible:outline-focus active:opacity-75 ${
+                    isStruckThrough
+                      ? "text-muted line-through"
+                      : isPast
+                        ? "text-muted"
+                        : "text-foreground"
+                  }`}
+                >
+                  {s.name}
+                </button>
+              ) : (
+                <div
+                  className={`text-[15px] leading-snug font-bold ${
+                    isStruckThrough
+                      ? "text-muted line-through"
+                      : isPast
+                        ? "text-muted"
+                        : "text-foreground"
+                  }`}
+                >
+                  ...
+                </div>
+              )}
+              {isSkipped && (
+                <Chip size="sm" variant="soft" color="warning">
+                  <Chip.Label>通過</Chip.Label>
+                </Chip>
+              )}
+            </div>
             {s?.platform && (
               <div className="mt-0.5 text-[11px] font-medium text-muted">
                 {s.platform}番のりば
@@ -564,14 +635,48 @@ const BusPanel: React.FC<BusPanelProps> = ({
             )}
             {isDebugMode && (
               <div className="mt-1 font-mono text-[10px] leading-snug text-muted">
-                #{st.stop_id} · delay {delay}s · {isPast ? "past" : "upcoming"}
+                #{st.stop_id} · delay {delay}s ·{" "}
+                {isTripCanceled
+                  ? "canceled"
+                  : isSkipped
+                    ? "skipped"
+                    : isPast
+                      ? "past"
+                      : "upcoming"}
               </div>
             )}
           </TimelineItem>
         );
       });
 
+      const tripAlerts = [
+        ...(tripDetail.alerts ?? []),
+        ...(isDebugMode && debugMockOptions?.alert ? DEBUG_MOCK_ALERTS : []),
+      ];
       items = [
+        ...(isTripCanceled
+          ? [
+              <div key="trip-canceled-banner" className="px-3 pt-2.5 pb-1">
+                <Alert
+                  status="danger"
+                  className="rounded-2xl border border-separator bg-surface/65 px-3.5 py-2.5 shadow-surface"
+                >
+                  <Alert.Indicator />
+                  <Alert.Content className="gap-0.5">
+                    <Alert.Title className="text-xs leading-snug font-bold">
+                      この便は運休です
+                    </Alert.Title>
+                    <Alert.Description className="text-xs leading-relaxed">
+                      リアルタイム運行情報により運休として通知されています。
+                    </Alert.Description>
+                  </Alert.Content>
+                </Alert>
+              </div>,
+            ]
+          : []),
+        ...(tripAlerts.length > 0
+          ? [<ServiceAlertsList key="trip-alerts" alerts={tripAlerts} />]
+          : []),
         <Timeline key="trip-timeline" color={routeColor}>
           {stopItems}
         </Timeline>,
@@ -604,7 +709,33 @@ const BusPanel: React.FC<BusPanelProps> = ({
         speedText = `${Math.floor(liveSpeedKmh)} km/h`;
       }
       occupancyInfo = getOccupancyDisplay(liveOccupancyStatus);
+      isTripCanceled = isDebugMode && Boolean(debugMockOptions?.canceled);
+      const rtAlerts =
+        isDebugMode && debugMockOptions?.alert ? DEBUG_MOCK_ALERTS : [];
       items = [
+        ...(isTripCanceled
+          ? [
+              <div key="rt-canceled-banner" className="px-3 pt-2.5 pb-1">
+                <Alert
+                  status="danger"
+                  className="rounded-2xl border border-separator bg-surface/65 px-3.5 py-2.5 shadow-surface"
+                >
+                  <Alert.Indicator />
+                  <Alert.Content className="gap-0.5">
+                    <Alert.Title className="text-xs leading-snug font-bold">
+                      この便は運休です
+                    </Alert.Title>
+                    <Alert.Description className="text-xs leading-relaxed">
+                      リアルタイム運行情報により運休として通知されています。
+                    </Alert.Description>
+                  </Alert.Content>
+                </Alert>
+              </div>,
+            ]
+          : []),
+        ...(rtAlerts.length > 0
+          ? [<ServiceAlertsList key="rt-alerts" alerts={rtAlerts} />]
+          : []),
         <div key="rt-body" className="flex flex-col gap-2 px-3 py-2.5">
           {liveNextStopName && (
             <Card
@@ -667,9 +798,13 @@ const BusPanel: React.FC<BusPanelProps> = ({
               const st = trip.stops.find((s) => targetIds.includes(s.stop_id));
               if (st) {
                 const pole = data.stops[st.stop_id];
-                // サーバーから渡された本物の遅延データを取得
+                const isCanceled = Boolean(stopCanceledTrips?.[rid]?.[tid]);
+                const isSkipped = Boolean(stopSkippedTrips?.[rid]?.[tid]);
+                // サーバーから渡された本物の遅延データを取得（運休・通過時は遅延表示しない）
                 const delay =
-                  data.delays?.[rid]?.[tid] ?? stopDelays?.[rid]?.[tid] ?? 0;
+                  isCanceled || isSkipped
+                    ? 0
+                    : (data.delays?.[rid]?.[tid] ?? stopDelays?.[rid]?.[tid] ?? 0);
                 const estimatedSec = timeToSec(st.time) + delay;
 
                 allArrivals.push({
@@ -683,13 +818,28 @@ const BusPanel: React.FC<BusPanelProps> = ({
                   is_past: estimatedSec < nowSec,
                   delay_seconds: delay,
                   occupancy_status: tripOccupancyMap[tid] ?? "NO_DATA_AVAILABLE",
+                  is_canceled: isCanceled,
+                  is_skipped: isSkipped,
                 });
               }
             });
           });
 
+          const activeStopAlerts = [
+            ...(stopAlerts ?? []),
+            ...(isDebugMode && debugMockOptions?.alert ? DEBUG_MOCK_ALERTS : []),
+          ];
+
           if (allArrivals.length === 0) {
             items = [
+              ...(activeStopAlerts.length > 0
+                ? [
+                    <ServiceAlertsList
+                      key="stop-alerts"
+                      alerts={activeStopAlerts}
+                    />,
+                  ]
+                : []),
               <PanelEmptyState key="empty" title="本日の運行はありません" />,
             ];
           } else {
@@ -700,10 +850,37 @@ const BusPanel: React.FC<BusPanelProps> = ({
               return aSec - bSec;
             });
 
+            if (isDebugMode && allArrivals.length > 0) {
+              const firstUpcomingIdx = allArrivals.findIndex((b) => !b.is_past);
+              const baseIdx =
+                firstUpcomingIdx >= 0 ? firstUpcomingIdx : allArrivals.length - 1;
+              if (debugMockOptions?.canceled) {
+                allArrivals[baseIdx] = {
+                  ...allArrivals[baseIdx],
+                  is_canceled: true,
+                  delay_seconds: 0,
+                };
+              }
+              if (debugMockOptions?.skipped) {
+                const skipIdx =
+                  debugMockOptions.canceled && allArrivals.length > 1
+                    ? baseIdx + 1 < allArrivals.length
+                      ? baseIdx + 1
+                      : baseIdx - 1
+                    : baseIdx;
+                allArrivals[skipIdx] = {
+                  ...allArrivals[skipIdx],
+                  is_skipped: true,
+                  delay_seconds: 0,
+                };
+              }
+            }
+
             let firstFutureFound = false;
             const timetableItems = allArrivals.map((bus, idx) => {
-              const delay = bus.delay_seconds ?? 0;
-              const hasDelay = !bus.is_past && delay >= 60;
+              const isInactive = Boolean(bus.is_canceled || bus.is_skipped);
+              const delay = isInactive ? 0 : (bus.delay_seconds ?? 0);
+              const hasDelay = !isInactive && !bus.is_past && delay >= 60;
               const estimatedTime = hasDelay
                 ? addDelayToTime(bus.time, delay)
                 : null;
@@ -736,7 +913,7 @@ const BusPanel: React.FC<BusPanelProps> = ({
                     )
                   }
                   className={`w-full cursor-pointer flex-row items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition-[transform,background-color] duration-150 outline-none select-none focus-visible:status-focused active:scale-[0.98] ${
-                    bus.is_past
+                    bus.is_past || isInactive
                       ? "bg-surface/40 hover:bg-surface/65"
                       : "bg-surface/65 hover:bg-surface/85"
                   }`}
@@ -746,6 +923,7 @@ const BusPanel: React.FC<BusPanelProps> = ({
                       scheduledTime={bus.time}
                       estimatedTime={estimatedTime}
                       isPast={bus.is_past}
+                      isStruckThrough={isInactive}
                     />
                   </div>
                   <div className="min-w-0 flex-1">
@@ -762,7 +940,11 @@ const BusPanel: React.FC<BusPanelProps> = ({
                       />
                       <span
                         className={`text-[15px] leading-snug font-bold whitespace-normal [word-break:auto-phrase] ${
-                          bus.is_past ? "text-muted" : "text-foreground"
+                          isInactive
+                            ? "text-muted line-through"
+                            : bus.is_past
+                              ? "text-muted"
+                              : "text-foreground"
                         }`}
                       >
                         {headsignText}
@@ -777,21 +959,51 @@ const BusPanel: React.FC<BusPanelProps> = ({
                       <div className="mt-1 font-mono text-[10px] leading-snug text-muted">
                         {bus.route_id} / {bus.trip_id} · delay{" "}
                         {bus.delay_seconds ?? 0}s
+                        {bus.is_canceled ? " · canceled" : ""}
+                        {bus.is_skipped ? " · skipped" : ""}
                       </div>
                     )}
                   </div>
-                  <span
-                    className={`material-icons-outlined shrink-0 text-[18px] leading-none ${occupancy.iconColorClass}`}
-                    title={occupancy.label}
-                    aria-label={occupancy.label}
-                  >
-                    {occupancy.icon}
-                  </span>
+                  {bus.is_canceled ? (
+                    <Chip
+                      size="sm"
+                      variant="soft"
+                      color="danger"
+                      className="shrink-0"
+                    >
+                      <Chip.Label>運休</Chip.Label>
+                    </Chip>
+                  ) : bus.is_skipped ? (
+                    <Chip
+                      size="sm"
+                      variant="soft"
+                      color="warning"
+                      className="shrink-0"
+                    >
+                      <Chip.Label>通過</Chip.Label>
+                    </Chip>
+                  ) : (
+                    <span
+                      className={`material-icons-outlined shrink-0 text-[18px] leading-none ${occupancy.iconColorClass}`}
+                      title={occupancy.label}
+                      aria-label={occupancy.label}
+                    >
+                      {occupancy.icon}
+                    </span>
+                  )}
                 </Card>
               );
             });
 
             items = [
+              ...(activeStopAlerts.length > 0
+                ? [
+                    <ServiceAlertsList
+                      key="stop-alerts"
+                      alerts={activeStopAlerts}
+                    />,
+                  ]
+                : []),
               <div
                 key="stop-timetable"
                 aria-label="発車予定時刻表"
@@ -811,6 +1023,8 @@ const BusPanel: React.FC<BusPanelProps> = ({
       via,
       office,
       speedText,
+      isTripCanceled,
+      skippedStopsCount,
       initialTargetId,
       occupancyInfo,
     };
@@ -825,7 +1039,11 @@ const BusPanel: React.FC<BusPanelProps> = ({
     liveOccupancyStatus,
     tripDetail,
     isDebugMode,
+    debugMockOptions,
     stopDelays,
+    stopCanceledTrips,
+    stopSkippedTrips,
+    stopAlerts,
     tripOccupancyMap,
     currentTime,
     initialZoom,
@@ -978,7 +1196,31 @@ const BusPanel: React.FC<BusPanelProps> = ({
             )}
             {selectedTrip && (
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                {panelData.occupancyInfo && (
+                {panelData.isTripCanceled && (
+                  <Chip variant="soft" color="danger">
+                    <span
+                      className="material-icons-outlined text-[14px]"
+                      aria-hidden
+                    >
+                      block
+                    </span>
+                    <Chip.Label>運休</Chip.Label>
+                  </Chip>
+                )}
+                {panelData.skippedStopsCount > 0 && (
+                  <Chip variant="soft" color="warning">
+                    <span
+                      className="material-icons-outlined text-[14px]"
+                      aria-hidden
+                    >
+                      skip_next
+                    </span>
+                    <Chip.Label>
+                      通過バス停あり ({panelData.skippedStopsCount})
+                    </Chip.Label>
+                  </Chip>
+                )}
+                {!panelData.isTripCanceled && panelData.occupancyInfo && (
                   <Chip
                     variant="soft"
                     color={panelData.occupancyInfo.chipColor}
@@ -992,7 +1234,7 @@ const BusPanel: React.FC<BusPanelProps> = ({
                     <Chip.Label>{panelData.occupancyInfo.label}</Chip.Label>
                   </Chip>
                 )}
-                {panelData.speedText && (
+                {!panelData.isTripCanceled && panelData.speedText && (
                   <Chip variant="soft" color="default">
                     <span
                       className="material-icons-outlined text-[14px]"

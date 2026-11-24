@@ -50,14 +50,95 @@ type TripInfo struct {
 	Stops     []TripStop `json:"stops"`
 }
 
-// TripRealtimeUpdate はtrip_idをキーにした遅延情報 (サーバー内部用)
+// TripRealtimeUpdate はtrip_idをキーにした遅延・運休・通過情報 (サーバー内部用)
 type TripRealtimeUpdate struct {
-	TripID     string           `json:"trip_id"`
-	RouteID    string           `json:"route_id"`
-	Headsign   string           `json:"headsign,omitempty"`
-	VehicleID  string           `json:"vehicle_id,omitempty"`
-	TripDelay  int64            `json:"trip_delay,omitempty"`  // 全体の遅延秒数
-	StopDelays map[string]int64 `json:"stop_delays,omitempty"` // stop_id -> delay_seconds のマップ
+	TripID               string           `json:"trip_id"`
+	RouteID              string           `json:"route_id"`
+	Headsign             string           `json:"headsign,omitempty"`
+	VehicleID            string           `json:"vehicle_id,omitempty"`
+	TripDelay            int64            `json:"trip_delay,omitempty"`            // 全体の遅延秒数
+	StopDelays           map[string]int64 `json:"stop_delays,omitempty"`           // stop_id -> delay_seconds のマップ
+	Canceled             bool             `json:"canceled,omitempty"`              // 便全体の運休フラグ
+	ScheduleRelationship string           `json:"schedule_relationship,omitempty"` // GTFS-RT ScheduleRelationship
+	SkippedStops         map[string]bool  `json:"skipped_stops,omitempty"`         // stop_id -> true (通過バス停)
+}
+
+type AlertTargetRoute struct {
+	RouteID   string `json:"route_id"`
+	ShortName string `json:"short_name"`
+	Color     string `json:"color"`
+}
+
+type AlertTargetStop struct {
+	StopID string  `json:"stop_id"`
+	Name   string  `json:"name"`
+	Lat    float64 `json:"lat"`
+	Lng    float64 `json:"lng"`
+}
+
+type AlertTargetTrip struct {
+	RouteID   string `json:"route_id"`
+	RouteName string `json:"route_name"`
+	TripID    string `json:"trip_id"`
+	Headsign  string `json:"headsign,omitempty"`
+}
+
+// ServiceAlert は GTFS-RT Alert フィードの運行情報
+type ServiceAlert struct {
+	ID              string             `json:"id"`
+	Cause           string             `json:"cause,omitempty"`
+	Effect          string             `json:"effect,omitempty"`
+	HeaderText      string             `json:"header_text,omitempty"`
+	DescriptionText string             `json:"description_text,omitempty"`
+	URL             string             `json:"url,omitempty"`
+	ActiveFrom      int64              `json:"active_from,omitempty"`
+	ActiveTo        int64              `json:"active_to,omitempty"`
+	AgencyWide      bool               `json:"agency_wide,omitempty"`
+	TargetRoutes    []AlertTargetRoute `json:"target_routes,omitempty"`
+	TargetStops     []AlertTargetStop  `json:"target_stops,omitempty"`
+	TargetTrips     []AlertTargetTrip  `json:"target_trips,omitempty"`
+}
+
+type DisruptedStopInfo struct {
+	StopID string `json:"stop_id"`
+	Name   string `json:"name"`
+}
+
+type DisruptedTripNotice struct {
+	TripID       string              `json:"trip_id"`
+	RouteID      string              `json:"route_id"`
+	RouteName    string              `json:"route_name"`
+	RouteColor   string              `json:"route_color"`
+	Headsign     string              `json:"headsign"`
+	Via          string              `json:"via,omitempty"`
+	StartTime    string              `json:"start_time,omitempty"`
+	FirstStopID  string              `json:"first_stop_id,omitempty"`
+	FirstStopLat float64             `json:"first_stop_lat,omitempty"`
+	FirstStopLng float64             `json:"first_stop_lng,omitempty"`
+	Canceled     bool                `json:"canceled,omitempty"`
+	SkippedStops []DisruptedStopInfo `json:"skipped_stops,omitempty"`
+}
+
+type AlertsOverviewResponse struct {
+	Alerts         []ServiceAlert        `json:"alerts"`
+	DisruptedTrips []DisruptedTripNotice `json:"disrupted_trips"`
+	Count          int                   `json:"count"`
+	FetchedAt      int64                 `json:"fetched_at"`
+	RealtimeError  string                `json:"realtime_error,omitempty"`
+}
+
+type alertEntityTarget struct {
+	AgencyID  string
+	RouteID   string
+	RouteType *int32
+	TripID    string
+	StopID    string
+}
+
+type cachedServiceAlert struct {
+	Alert        ServiceAlert
+	Entities     []alertEntityTarget
+	ActiveRanges []*gtfs.TimeRange
 }
 
 // AddedTripUpdate は trip_id が空の ADDED 便に対する車両IDベースのリアルタイム予測情報
@@ -122,24 +203,30 @@ type RoutesData map[string]RouteInfo
 
 // TripDetailResponse はクライアントに返す便詳細情報
 type TripDetailResponse struct {
-	TripID     string           `json:"trip_id"`
-	RouteID    string           `json:"route_id"`
-	RouteName  string           `json:"route_name"`
-	RouteColor string           `json:"route_color"`
-	Trip       TripInfo         `json:"trip"`
-	Stops      StopsData        `json:"stops"`
-	Shape      *ShapeData       `json:"shape"`
-	OfficeName string           `json:"office_name"`
-	Delays     map[string]int64 `json:"delays,omitempty"`     // stop_id -> delay_seconds
-	TripDelay  int64            `json:"trip_delay,omitempty"` // この便全体の遅延秒数
+	TripID       string           `json:"trip_id"`
+	RouteID      string           `json:"route_id"`
+	RouteName    string           `json:"route_name"`
+	RouteColor   string           `json:"route_color"`
+	Trip         TripInfo         `json:"trip"`
+	Stops        StopsData        `json:"stops"`
+	Shape        *ShapeData       `json:"shape"`
+	OfficeName   string           `json:"office_name"`
+	Delays       map[string]int64 `json:"delays,omitempty"`        // stop_id -> delay_seconds
+	TripDelay    int64            `json:"trip_delay,omitempty"`    // この便全体の遅延秒数
+	Canceled     bool             `json:"canceled,omitempty"`      // この便が運休か
+	SkippedStops []string         `json:"skipped_stops,omitempty"` // 通過扱いとなった stop_id 一覧
+	Alerts       []ServiceAlert   `json:"alerts,omitempty"`        // 関連する運行情報
 }
 
 // StopTimetableResponse はバス停の時刻表情報
 type StopTimetableResponse struct {
-	StopID     string                         `json:"stop_id"`
-	StopName   string                         `json:"stop_name"`
-	Timetables map[string]map[string]TripInfo `json:"timetables"`       // route_id -> trip_id -> TripInfo
-	Delays     map[string]map[string]int64    `json:"delays,omitempty"` // route_id -> trip_id -> delay_seconds
+	StopID        string                         `json:"stop_id"`
+	StopName      string                         `json:"stop_name"`
+	Timetables    map[string]map[string]TripInfo `json:"timetables"`               // route_id -> trip_id -> TripInfo
+	Delays        map[string]map[string]int64    `json:"delays,omitempty"`         // route_id -> trip_id -> delay_seconds
+	CanceledTrips map[string]map[string]bool     `json:"canceled_trips,omitempty"` // route_id -> trip_id -> true
+	SkippedTrips  map[string]map[string]bool     `json:"skipped_trips,omitempty"`  // route_id -> trip_id -> true (このバス停を通過)
+	Alerts        []ServiceAlert                 `json:"alerts,omitempty"`         // 関連する運行情報
 }
 
 // BusPosition はバス位置情報
@@ -193,11 +280,21 @@ var (
 		updates:        make(map[string]*TripRealtimeUpdate),
 		addedByVehicle: make(map[string]*AddedTripUpdate),
 	}
+
+	alertCache = struct {
+		mu        sync.Mutex
+		fetchedAt time.Time
+		hasData   bool
+		alerts    []cachedServiceAlert
+		fetching  bool
+		fetchDone chan struct{}
+	}{}
 )
 
 const (
 	odptVehicleRealtimeURL    = "https://api.odpt.org/api/v4/gtfs/realtime/odpt_SendaiMunicipal_bus_realtime_information_vehicle"
 	odptTripUpdateRealtimeURL = "https://api.odpt.org/api/v4/gtfs/realtime/odpt_SendaiMunicipal_bus_realtime_information_trip_update"
+	odptAlertRealtimeURL      = "https://api.odpt.org/api/v4/gtfs/realtime/odpt_SendaiMunicipal_bus_realtime_information_alert"
 )
 
 var realtimeCacheTTL = 5 * time.Second
@@ -258,13 +355,13 @@ func headsignByTrip(routeID, tripID string) string {
 	return ""
 }
 
-func fetchVehiclePositionsFromODPT() ([]BusPosition, error) {
+func fetchGTFSRTFeed(rawURL string) (*gtfs.FeedMessage, error) {
 	token := getODPTAccessToken()
 	if token == "" {
 		return nil, fmt.Errorf("ODPT access token is missing")
 	}
 
-	u, err := url.Parse(odptVehicleRealtimeURL)
+	u, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, err
 	}
@@ -281,7 +378,7 @@ func fetchVehiclePositionsFromODPT() ([]BusPosition, error) {
 
 	if res.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(res.Body, 1024))
-		return nil, fmt.Errorf("odpt vehicle fetch failed: status=%d body=%s", res.StatusCode, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("odpt fetch failed (%s): status=%d body=%s", rawURL, res.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	body, err := io.ReadAll(res.Body)
@@ -291,7 +388,15 @@ func fetchVehiclePositionsFromODPT() ([]BusPosition, error) {
 
 	feed := &gtfs.FeedMessage{}
 	if err := proto.Unmarshal(body, feed); err != nil {
-		return nil, fmt.Errorf("failed to parse gtfs-rt vehicle payload: %w", err)
+		return nil, fmt.Errorf("failed to parse gtfs-rt payload: %w", err)
+	}
+	return feed, nil
+}
+
+func fetchVehiclePositionsFromODPT() ([]BusPosition, error) {
+	feed, err := fetchGTFSRTFeed(odptVehicleRealtimeURL)
+	if err != nil {
+		return nil, err
 	}
 
 	buses := make([]BusPosition, 0, len(feed.Entity))
@@ -307,6 +412,12 @@ func fetchVehiclePositionsFromODPT() ([]BusPosition, error) {
 		}
 
 		trip := vehicle.GetTrip()
+		if trip != nil {
+			schedRel := trip.GetScheduleRelationship()
+			if schedRel == gtfs.TripDescriptor_CANCELED || schedRel == gtfs.TripDescriptor_DELETED {
+				continue
+			}
+		}
 		routeID := ""
 		tripID := ""
 		if trip != nil {
@@ -926,48 +1037,25 @@ func calculateAllBusPositionsAt(nowSec int) []BusPosition {
 	return result
 }
 
-// リアルタイム遅延情報（TripUpdate）を取得してマップを生成
-func fetchTripUpdatesFromODPT() (map[string]*TripRealtimeUpdate, map[string]*AddedTripUpdate, error) {
-	token := getODPTAccessToken()
-	if token == "" {
-		return make(map[string]*TripRealtimeUpdate), make(map[string]*AddedTripUpdate), fmt.Errorf("ODPT access token is missing")
-	}
-
-	u, err := url.Parse(odptTripUpdateRealtimeURL)
-	if err != nil {
-		return make(map[string]*TripRealtimeUpdate), make(map[string]*AddedTripUpdate), err
-	}
-
-	q := u.Query()
-	q.Set("acl:consumerKey", token)
-	u.RawQuery = q.Encode()
-
-	res, err := odptHTTPClient.Get(u.String())
-	if err != nil {
-		return make(map[string]*TripRealtimeUpdate), make(map[string]*AddedTripUpdate), err
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusOK {
-		return make(map[string]*TripRealtimeUpdate), make(map[string]*AddedTripUpdate), fmt.Errorf("odpt trip_update fetch failed: status=%d", res.StatusCode)
-	}
-
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		return make(map[string]*TripRealtimeUpdate), make(map[string]*AddedTripUpdate), err
-	}
-
-	feed := &gtfs.FeedMessage{}
-	if err := proto.Unmarshal(body, feed); err != nil {
-		return make(map[string]*TripRealtimeUpdate), make(map[string]*AddedTripUpdate), fmt.Errorf("failed to parse payload: %w", err)
-	}
-
+func parseTripUpdatesFeed(feed *gtfs.FeedMessage) (map[string]*TripRealtimeUpdate, map[string]*AddedTripUpdate) {
 	updates := make(map[string]*TripRealtimeUpdate)
 	addedByVehicle := make(map[string]*AddedTripUpdate)
+	if feed == nil {
+		return updates, addedByVehicle
+	}
+
 	for _, entity := range feed.Entity {
 		tu := entity.GetTripUpdate()
 		if tu == nil || tu.GetTrip() == nil {
 			continue
+		}
+
+		tripDesc := tu.GetTrip()
+		schedRel := tripDesc.GetScheduleRelationship()
+		isCanceled := schedRel == gtfs.TripDescriptor_CANCELED || schedRel == gtfs.TripDescriptor_DELETED
+		schedRelStr := ""
+		if schedRel != gtfs.TripDescriptor_SCHEDULED {
+			schedRelStr = schedRel.String()
 		}
 
 		vehicleID := ""
@@ -975,9 +1063,9 @@ func fetchTripUpdatesFromODPT() (map[string]*TripRealtimeUpdate, map[string]*Add
 			vehicleID = tu.GetVehicle().GetId()
 		}
 
-		tripID := tu.GetTrip().GetTripId()
+		tripID := tripDesc.GetTripId()
 		if tripID == "" {
-			if vehicleID != "" {
+			if vehicleID != "" && !isCanceled {
 				type seqStop struct {
 					seq    uint32
 					stopID string
@@ -985,6 +1073,9 @@ func fetchTripUpdatesFromODPT() (map[string]*TripRealtimeUpdate, map[string]*Add
 				}
 				var list []seqStop
 				for _, stu := range tu.GetStopTimeUpdate() {
+					if stu.GetScheduleRelationship() == gtfs.TripUpdate_StopTimeUpdate_SKIPPED {
+						continue
+					}
 					stopID := stu.GetStopId()
 					if stopID == "" {
 						continue
@@ -1014,7 +1105,7 @@ func fetchTripUpdatesFromODPT() (map[string]*TripRealtimeUpdate, map[string]*Add
 						}
 					}
 					addedByVehicle[vehicleID] = &AddedTripUpdate{
-						RouteID:        tu.GetTrip().GetRouteId(),
+						RouteID:        tripDesc.GetRouteId(),
 						VehicleID:      vehicleID,
 						StopIDs:        stopIDs,
 						PredictedTimes: predTimes,
@@ -1025,13 +1116,13 @@ func fetchTripUpdatesFromODPT() (map[string]*TripRealtimeUpdate, map[string]*Add
 		}
 
 		headsign := ""
-
 		delayMap := make(map[string]int64)
+		skippedStops := make(map[string]bool)
 		var lastSeq uint32
 		hasLastSeq := false
 		lastStopID := ""
 
-		// 各バス停ごとの遅延を愚直に保存
+		// 各バス停ごとの遅延・通過(SKIPPED)を保存
 		for _, stu := range tu.GetStopTimeUpdate() {
 			stopID := stu.GetStopId()
 			if stopID == "" {
@@ -1043,6 +1134,11 @@ func fetchTripUpdatesFromODPT() (map[string]*TripRealtimeUpdate, map[string]*Add
 				hasLastSeq = true
 				lastSeq = seq
 				lastStopID = stopID
+			}
+
+			if stu.GetScheduleRelationship() == gtfs.TripUpdate_StopTimeUpdate_SKIPPED {
+				skippedStops[stopID] = true
+				continue
 			}
 
 			if stu.Arrival != nil && stu.Arrival.Delay != nil {
@@ -1064,14 +1160,27 @@ func fetchTripUpdatesFromODPT() (map[string]*TripRealtimeUpdate, map[string]*Add
 		}
 
 		updates[tripID] = &TripRealtimeUpdate{
-			TripID:     tripID,
-			RouteID:    tu.GetTrip().GetRouteId(),
-			Headsign:   headsign,
-			VehicleID:  vehicleID,
-			TripDelay:  tripDelay,
-			StopDelays: delayMap,
+			TripID:               tripID,
+			RouteID:              tripDesc.GetRouteId(),
+			Headsign:             headsign,
+			VehicleID:            vehicleID,
+			TripDelay:            tripDelay,
+			StopDelays:           delayMap,
+			Canceled:             isCanceled,
+			ScheduleRelationship: schedRelStr,
+			SkippedStops:         skippedStops,
 		}
 	}
+	return updates, addedByVehicle
+}
+
+// リアルタイム遅延・運休・通過情報（TripUpdate）を取得してマップを生成
+func fetchTripUpdatesFromODPT() (map[string]*TripRealtimeUpdate, map[string]*AddedTripUpdate, error) {
+	feed, err := fetchGTFSRTFeed(odptTripUpdateRealtimeURL)
+	if err != nil {
+		return make(map[string]*TripRealtimeUpdate), make(map[string]*AddedTripUpdate), err
+	}
+	updates, addedByVehicle := parseTripUpdatesFeed(feed)
 	return updates, addedByVehicle, nil
 }
 
@@ -1130,6 +1239,423 @@ func getRealtimeTripUpdatesAll() (map[string]*TripRealtimeUpdate, map[string]*Ad
 func getRealtimeTripUpdates() (map[string]*TripRealtimeUpdate, error) {
 	updates, _, err := getRealtimeTripUpdatesAll()
 	return updates, err
+}
+
+func pickTranslatedText(ts *gtfs.TranslatedString) string {
+	if ts == nil {
+		return ""
+	}
+	translations := ts.GetTranslation()
+	if len(translations) == 0 {
+		return ""
+	}
+	// 日本語 ("ja", "ja-JP", "ja-Hrkt" など) を優先し、次点で言語未指定、最後に先頭を採用
+	var fallbackEmpty string
+	var firstText string
+	for _, tr := range translations {
+		if tr == nil {
+			continue
+		}
+		text := strings.TrimSpace(tr.GetText())
+		if text == "" {
+			continue
+		}
+		if firstText == "" {
+			firstText = text
+		}
+		lang := strings.ToLower(strings.TrimSpace(tr.GetLanguage()))
+		if lang == "ja" || strings.HasPrefix(lang, "ja-") {
+			return text
+		}
+		if lang == "" && fallbackEmpty == "" {
+			fallbackEmpty = text
+		}
+	}
+	if fallbackEmpty != "" {
+		return fallbackEmpty
+	}
+	return firstText
+}
+
+func isAlertActiveAt(ranges []*gtfs.TimeRange, nowUnix int64) (bool, int64, int64) {
+	if len(ranges) == 0 {
+		return true, 0, 0
+	}
+	nowU := uint64(0)
+	if nowUnix > 0 {
+		nowU = uint64(nowUnix)
+	}
+	for _, r := range ranges {
+		if r == nil {
+			continue
+		}
+		start := r.GetStart()
+		end := r.GetEnd()
+		if (start == 0 || nowU >= start) && (end == 0 || nowU < end) {
+			return true, int64(start), int64(end)
+		}
+	}
+	return false, 0, 0
+}
+
+func parseAlertsFeed(feed *gtfs.FeedMessage) []cachedServiceAlert {
+	if feed == nil {
+		return nil
+	}
+	alerts := make([]cachedServiceAlert, 0, len(feed.Entity))
+	for _, entity := range feed.Entity {
+		al := entity.GetAlert()
+		if al == nil {
+			continue
+		}
+
+		header := pickTranslatedText(al.GetHeaderText())
+		desc := pickTranslatedText(al.GetDescriptionText())
+		if header == "" && desc == "" {
+			continue
+		}
+
+		cause := ""
+		if al.Cause != nil {
+			cause = al.GetCause().String()
+		}
+		effect := ""
+		if al.Effect != nil {
+			effect = al.GetEffect().String()
+		}
+
+		entities := make([]alertEntityTarget, 0, len(al.GetInformedEntity()))
+		agencyWide := len(al.GetInformedEntity()) == 0
+		var targetRoutes []AlertTargetRoute
+		var targetStops []AlertTargetStop
+		var targetTrips []AlertTargetTrip
+		seenRoutes := make(map[string]struct{})
+		seenStops := make(map[string]struct{})
+		seenTrips := make(map[string]struct{})
+
+		for _, ie := range al.GetInformedEntity() {
+			if ie == nil {
+				continue
+			}
+			target := alertEntityTarget{
+				AgencyID:  strings.TrimSpace(ie.GetAgencyId()),
+				RouteID:   strings.TrimSpace(ie.GetRouteId()),
+				RouteType: ie.RouteType,
+				StopID:    strings.TrimSpace(ie.GetStopId()),
+			}
+			if ie.GetTrip() != nil {
+				target.TripID = strings.TrimSpace(ie.GetTrip().GetTripId())
+				if target.RouteID == "" {
+					target.RouteID = strings.TrimSpace(ie.GetTrip().GetRouteId())
+				}
+			}
+			entities = append(entities, target)
+
+			if target.RouteID == "" && target.StopID == "" && target.TripID == "" {
+				agencyWide = true
+			}
+			if target.RouteID != "" {
+				if _, ok := seenRoutes[target.RouteID]; !ok {
+					seenRoutes[target.RouteID] = struct{}{}
+					rName, rColor := routeMeta(target.RouteID)
+					targetRoutes = append(targetRoutes, AlertTargetRoute{
+						RouteID:   target.RouteID,
+						ShortName: rName,
+						Color:     rColor,
+					})
+				}
+			}
+			if target.StopID != "" {
+				if _, ok := seenStops[target.StopID]; !ok {
+					seenStops[target.StopID] = struct{}{}
+					sName := target.StopID
+					var sLat, sLng float64
+					if st, ok := stopsCache[target.StopID]; ok {
+						sName = st.Name
+						sLat = st.Lat
+						sLng = st.Lng
+					}
+					targetStops = append(targetStops, AlertTargetStop{
+						StopID: target.StopID,
+						Name:   sName,
+						Lat:    sLat,
+						Lng:    sLng,
+					})
+				}
+			}
+			if target.TripID != "" {
+				if _, ok := seenTrips[target.TripID]; !ok {
+					seenTrips[target.TripID] = struct{}{}
+					rid := target.RouteID
+					hs := ""
+					if rid != "" {
+						hs = headsignByTrip(rid, target.TripID)
+					}
+					if hs == "" {
+						for candRid, trips := range timetablesCache {
+							if t, ok := trips[target.TripID]; ok {
+								rid = candRid
+								hs = t.Headsign
+								break
+							}
+						}
+					}
+					rName, _ := routeMeta(rid)
+					targetTrips = append(targetTrips, AlertTargetTrip{
+						RouteID:   rid,
+						RouteName: rName,
+						TripID:    target.TripID,
+						Headsign:  hs,
+					})
+				}
+			}
+		}
+
+		activeRanges := al.GetCommunicationPeriod()
+		if len(activeRanges) == 0 {
+			activeRanges = al.GetActivePeriod()
+		}
+		if len(activeRanges) == 0 {
+			activeRanges = al.GetImpactPeriod()
+		}
+
+		var activeFrom, activeTo int64
+		impactRanges := al.GetImpactPeriod()
+		if len(impactRanges) == 0 {
+			impactRanges = al.GetActivePeriod()
+		}
+		if len(impactRanges) > 0 && impactRanges[0] != nil {
+			activeFrom = int64(impactRanges[0].GetStart())
+			activeTo = int64(impactRanges[0].GetEnd())
+		}
+
+		alerts = append(alerts, cachedServiceAlert{
+			Alert: ServiceAlert{
+				ID:              entity.GetId(),
+				Cause:           cause,
+				Effect:          effect,
+				HeaderText:      header,
+				DescriptionText: desc,
+				URL:             pickTranslatedText(al.GetUrl()),
+				ActiveFrom:      activeFrom,
+				ActiveTo:        activeTo,
+				AgencyWide:      agencyWide,
+				TargetRoutes:    targetRoutes,
+				TargetStops:     targetStops,
+				TargetTrips:     targetTrips,
+			},
+			Entities:     entities,
+			ActiveRanges: activeRanges,
+		})
+	}
+	return alerts
+}
+
+func fetchAlertsFromODPT() ([]cachedServiceAlert, error) {
+	feed, err := fetchGTFSRTFeed(odptAlertRealtimeURL)
+	if err != nil {
+		return nil, err
+	}
+	return parseAlertsFeed(feed), nil
+}
+
+func getRealtimeAlerts() ([]cachedServiceAlert, error) {
+	for {
+		now := time.Now()
+		if realtimeCacheTTL <= 0 {
+			return fetchAlertsFromODPT()
+		}
+
+		alertCache.mu.Lock()
+		if alertCache.hasData && now.Sub(alertCache.fetchedAt) <= realtimeCacheTTL {
+			cached := append([]cachedServiceAlert(nil), alertCache.alerts...)
+			alertCache.mu.Unlock()
+			return cached, nil
+		}
+
+		if alertCache.fetching {
+			waitCh := alertCache.fetchDone
+			alertCache.mu.Unlock()
+			<-waitCh
+			continue
+		}
+
+		alertCache.fetching = true
+		alertCache.fetchDone = make(chan struct{})
+		alertCache.mu.Unlock()
+
+		alerts, err := fetchAlertsFromODPT()
+
+		alertCache.mu.Lock()
+		if err == nil {
+			alertCache.fetchedAt = time.Now()
+			alertCache.hasData = true
+			alertCache.alerts = alerts
+		}
+		alertCache.fetching = false
+		close(alertCache.fetchDone)
+		alertCache.fetchDone = nil
+		alertCache.mu.Unlock()
+
+		if err != nil {
+			return nil, err
+		}
+		return alerts, nil
+	}
+}
+
+func matchesAlertEntity(target alertEntityTarget, routeIDs, tripIDs, stopIDs map[string]bool) bool {
+	if target.RouteType != nil && *target.RouteType != 3 {
+		return false
+	}
+	if routeIDs != nil && target.RouteID != "" && !routeIDs[target.RouteID] {
+		return false
+	}
+	if tripIDs != nil && target.TripID != "" && !tripIDs[target.TripID] {
+		return false
+	}
+	if stopIDs != nil && target.StopID != "" && !stopIDs[target.StopID] {
+		return false
+	}
+	return true
+}
+
+func matchAlerts(cached []cachedServiceAlert, nowUnix int64, routeIDs, tripIDs, stopIDs map[string]bool) []ServiceAlert {
+	if len(cached) == 0 {
+		return nil
+	}
+	matched := make([]ServiceAlert, 0)
+	seen := make(map[string]struct{})
+	for _, item := range cached {
+		active, activeFrom, activeTo := isAlertActiveAt(item.ActiveRanges, nowUnix)
+		if !active {
+			continue
+		}
+		isTarget := len(item.Entities) == 0
+		for _, target := range item.Entities {
+			if matchesAlertEntity(target, routeIDs, tripIDs, stopIDs) {
+				isTarget = true
+				break
+			}
+		}
+		if !isTarget {
+			continue
+		}
+		dedupeKey := item.Alert.ID
+		if dedupeKey == "" {
+			dedupeKey = item.Alert.HeaderText + "|" + item.Alert.DescriptionText
+		}
+		if _, exists := seen[dedupeKey]; exists {
+			continue
+		}
+		seen[dedupeKey] = struct{}{}
+		alert := item.Alert
+		if activeFrom > 0 && alert.ActiveFrom == 0 {
+			alert.ActiveFrom = activeFrom
+		}
+		if activeTo > 0 && alert.ActiveTo == 0 {
+			alert.ActiveTo = activeTo
+		}
+		matched = append(matched, alert)
+	}
+	return matched
+}
+
+func buildDisruptedTripNotices(updates map[string]*TripRealtimeUpdate) []DisruptedTripNotice {
+	notices := make([]DisruptedTripNotice, 0)
+	for tripID, u := range updates {
+		if u == nil || (!u.Canceled && len(u.SkippedStops) == 0) {
+			continue
+		}
+
+		routeID := u.RouteID
+		var trip TripInfo
+		found := false
+		if routeID != "" {
+			if routeTrips, ok := timetablesCache[routeID]; ok {
+				if t, ok := routeTrips[tripID]; ok {
+					trip = t
+					found = true
+				}
+			}
+		}
+		if !found {
+			for rid, routeTrips := range timetablesCache {
+				if t, ok := routeTrips[tripID]; ok {
+					routeID = rid
+					trip = t
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			continue
+		}
+		if trip.ServiceID != "" && !isServiceRunningToday(trip.ServiceID) {
+			continue
+		}
+
+		rName, rColor := routeMeta(routeID)
+		startTime := ""
+		firstStopID := ""
+		var firstLat, firstLng float64
+		if len(trip.Stops) > 0 {
+			startTime = trip.Stops[0].Time
+			firstStopID = trip.Stops[0].StopID
+			if st, ok := stopsCache[firstStopID]; ok {
+				firstLat = st.Lat
+				firstLng = st.Lng
+			}
+		}
+
+		var skippedList []DisruptedStopInfo
+		if len(u.SkippedStops) > 0 {
+			seen := make(map[string]struct{}, len(u.SkippedStops))
+			for _, st := range trip.Stops {
+				if u.SkippedStops[st.StopID] {
+					if _, dup := seen[st.StopID]; dup {
+						continue
+					}
+					seen[st.StopID] = struct{}{}
+					sName := st.StopID
+					if s, ok := stopsCache[st.StopID]; ok {
+						sName = s.Name
+					}
+					skippedList = append(skippedList, DisruptedStopInfo{
+						StopID: st.StopID,
+						Name:   sName,
+					})
+				}
+			}
+		}
+
+		notices = append(notices, DisruptedTripNotice{
+			TripID:       tripID,
+			RouteID:      routeID,
+			RouteName:    rName,
+			RouteColor:   rColor,
+			Headsign:     trip.Headsign,
+			Via:          trip.Via,
+			StartTime:    startTime,
+			FirstStopID:  firstStopID,
+			FirstStopLat: firstLat,
+			FirstStopLng: firstLng,
+			Canceled:     u.Canceled,
+			SkippedStops: skippedList,
+		})
+	}
+
+	sort.Slice(notices, func(i, j int) bool {
+		if notices[i].StartTime != notices[j].StartTime {
+			return notices[i].StartTime < notices[j].StartTime
+		}
+		if notices[i].RouteName != notices[j].RouteName {
+			return notices[i].RouteName < notices[j].RouteName
+		}
+		return notices[i].TripID < notices[j].TripID
+	})
+	return notices
 }
 
 func main() {
@@ -1238,6 +1764,16 @@ func main() {
 					buses[i].Headsign = hs
 				}
 			}
+
+			// TripUpdate 側で CANCELED / DELETED の便は走行中マーカーから除外する
+			activeBuses := make([]BusPosition, 0, len(buses))
+			for _, b := range buses {
+				if u, ok := tripUpdates[b.TripID]; ok && u != nil && u.Canceled {
+					continue
+				}
+				activeBuses = append(activeBuses, b)
+			}
+			buses = activeBuses
 		}
 
 		// リアルタイム情報で行先が補完できなかった場合でも、時刻表マスタで一意に決まる行先を補完する
@@ -1382,25 +1918,61 @@ func main() {
 
 		delays := make(map[string]int64)
 		tripDelay := int64(0)
+		isCanceled := false
+		var skippedStops []string
 
 		// リアルタイムデータをそのまま渡す
 		if tripUpdates, err := getRealtimeTripUpdates(); err == nil {
 			if rtUpdate, exists := tripUpdates[tripID]; exists {
 				tripDelay = rtUpdate.TripDelay
 				delays = rtUpdate.StopDelays
+				isCanceled = rtUpdate.Canceled
+				if len(rtUpdate.SkippedStops) > 0 {
+					seenSkipped := make(map[string]struct{}, len(rtUpdate.SkippedStops))
+					for _, st := range trip.Stops {
+						if rtUpdate.SkippedStops[st.StopID] {
+							if _, dup := seenSkipped[st.StopID]; !dup {
+								seenSkipped[st.StopID] = struct{}{}
+								skippedStops = append(skippedStops, st.StopID)
+							}
+						}
+					}
+					for sid := range rtUpdate.SkippedStops {
+						if _, dup := seenSkipped[sid]; !dup {
+							seenSkipped[sid] = struct{}{}
+							skippedStops = append(skippedStops, sid)
+						}
+					}
+				}
 			}
 		}
 
+		var matchedAlerts []ServiceAlert
+		if cachedAlerts, err := getRealtimeAlerts(); err == nil {
+			routeSet := map[string]bool{routeID: true}
+			tripSet := map[string]bool{tripID: true}
+			stopSet := make(map[string]bool, len(trip.Stops))
+			for _, st := range trip.Stops {
+				if st.StopID != "" {
+					stopSet[st.StopID] = true
+				}
+			}
+			matchedAlerts = matchAlerts(cachedAlerts, time.Now().Unix(), routeSet, tripSet, stopSet)
+		}
+
 		response := TripDetailResponse{
-			TripID:     tripID,
-			RouteID:    routeID,
-			RouteName:  routesCache[routeID].ShortName,
-			RouteColor: routesCache[routeID].Color,
-			Trip:       trip,
-			Stops:      tripStops,
-			OfficeName: extraCache.Offices[trip.OfficeID],
-			Delays:     delays,
-			TripDelay:  tripDelay,
+			TripID:       tripID,
+			RouteID:      routeID,
+			RouteName:    routesCache[routeID].ShortName,
+			RouteColor:   routesCache[routeID].Color,
+			Trip:         trip,
+			Stops:        tripStops,
+			OfficeName:   extraCache.Offices[trip.OfficeID],
+			Delays:       delays,
+			TripDelay:    tripDelay,
+			Canceled:     isCanceled,
+			SkippedStops: skippedStops,
+			Alerts:       matchedAlerts,
 		}
 		if hasShape {
 			response.Shape = &shape
@@ -1417,6 +1989,8 @@ func main() {
 		}
 
 		filteredTimetables := make(map[string]map[string]TripInfo)
+		routeSet := make(map[string]bool)
+		tripSet := make(map[string]bool)
 		for routeID, trips := range timetablesCache {
 			for tripID, trip := range trips {
 				for _, ts := range trip.Stops {
@@ -1425,6 +1999,8 @@ func main() {
 							filteredTimetables[routeID] = make(map[string]TripInfo)
 						}
 						filteredTimetables[routeID][tripID] = trip
+						routeSet[routeID] = true
+						tripSet[tripID] = true
 						break
 					}
 				}
@@ -1433,10 +2009,26 @@ func main() {
 
 		// リアルタイムデータをそのまま渡す
 		delays := make(map[string]map[string]int64)
+		canceledTrips := make(map[string]map[string]bool)
+		skippedTrips := make(map[string]map[string]bool)
 		if tripUpdates, err := getRealtimeTripUpdates(); err == nil {
 			for routeID, trips := range filteredTimetables {
 				for tripID := range trips {
 					if rtUpdate, exists := tripUpdates[tripID]; exists {
+						if rtUpdate.Canceled {
+							if canceledTrips[routeID] == nil {
+								canceledTrips[routeID] = make(map[string]bool)
+							}
+							canceledTrips[routeID][tripID] = true
+							continue
+						}
+						if rtUpdate.SkippedStops[stopID] {
+							if skippedTrips[routeID] == nil {
+								skippedTrips[routeID] = make(map[string]bool)
+							}
+							skippedTrips[routeID][tripID] = true
+							continue
+						}
 						// そのバス停固有の遅延があれば採用、なければ便全体の遅延を採用
 						delay := int64(0)
 						if d, hasDelay := rtUpdate.StopDelays[stopID]; hasDelay {
@@ -1456,11 +2048,45 @@ func main() {
 			}
 		}
 
+		var matchedAlerts []ServiceAlert
+		if cachedAlerts, err := getRealtimeAlerts(); err == nil {
+			stopSet := map[string]bool{stopID: true}
+			matchedAlerts = matchAlerts(cachedAlerts, time.Now().Unix(), routeSet, tripSet, stopSet)
+		}
+
 		c.JSON(http.StatusOK, StopTimetableResponse{
-			StopID:     stopID,
-			StopName:   stop.Name,
-			Timetables: filteredTimetables,
-			Delays:     delays,
+			StopID:        stopID,
+			StopName:      stop.Name,
+			Timetables:    filteredTimetables,
+			Delays:        delays,
+			CanceledTrips: canceledTrips,
+			SkippedTrips:  skippedTrips,
+			Alerts:        matchedAlerts,
+		})
+	})
+
+	r.GET("/api/alerts", func(c *gin.Context) {
+		var errs []string
+		alerts := []ServiceAlert{}
+		if cachedAlerts, err := getRealtimeAlerts(); err != nil {
+			errs = append(errs, err.Error())
+		} else if matched := matchAlerts(cachedAlerts, time.Now().Unix(), nil, nil, nil); len(matched) > 0 {
+			alerts = matched
+		}
+
+		disruptedTrips := []DisruptedTripNotice{}
+		if tripUpdates, err := getRealtimeTripUpdates(); err != nil {
+			errs = append(errs, err.Error())
+		} else {
+			disruptedTrips = buildDisruptedTripNotices(tripUpdates)
+		}
+
+		c.JSON(http.StatusOK, AlertsOverviewResponse{
+			Alerts:         alerts,
+			DisruptedTrips: disruptedTrips,
+			Count:          len(alerts) + len(disruptedTrips),
+			FetchedAt:      time.Now().Unix(),
+			RealtimeError:  strings.Join(errs, "; "),
 		})
 	})
 

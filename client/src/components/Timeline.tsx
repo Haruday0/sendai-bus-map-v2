@@ -29,6 +29,8 @@ interface TimelineItemProps {
   leading?: React.ReactNode;
   children: React.ReactNode;
   isPast?: boolean;
+  isSkipped?: boolean;
+  isCanceled?: boolean;
   isHighlighted?: boolean;
   isFirst?: boolean;
   isLast?: boolean;
@@ -41,15 +43,18 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
   leading,
   children,
   isPast = false,
+  isSkipped = false,
+  isCanceled = false,
   isHighlighted = false,
   isFirst = false,
   isLast = false,
   onClick,
 }) => {
-  // 通過済み(isPast)はグレー、これから向かう(未通過)は路線色（未指定時はアクセント色）。
+  // 通過済み(isPast)・運休(isCanceled)はグレー系、これから向かう(未通過)は路線色（未指定時はアクセント色）。
   // 走行中の区間(直前が通過済み・次が未通過)では、丸と丸の中間までグレー・中間から先が路線色になる。
-  const lineColorClass = isPast ? "bg-separator" : "";
-  const upcomingLineStyle = isPast
+  const isMutedLine = isPast || isCanceled;
+  const lineColorClass = isMutedLine ? "bg-separator" : "";
+  const upcomingLineStyle = isMutedLine
     ? undefined
     : { backgroundColor: "var(--timeline-color, var(--accent))" };
 
@@ -63,8 +68,12 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
         : "hover:bg-default/75"
       : "";
 
-  // 通過済みバス停の丸は線と同じグレー、未通過のバス停は路線色
-  const nodeDot = isPast ? (
+  // 通過(SKIPPED)・運休・通過済み・未通過でノードの丸印を出し分ける
+  const nodeDot = isCanceled ? (
+    <span className="relative z-10 size-2.5 rounded-full border-2 border-danger/60 bg-surface" />
+  ) : isSkipped ? (
+    <span className="relative z-10 size-2.5 rounded-full border-2 border-dashed border-warning bg-surface" />
+  ) : isPast ? (
     <span className="relative z-10 size-2.5 rounded-full border-2 border-muted/60 bg-surface" />
   ) : (
     <span

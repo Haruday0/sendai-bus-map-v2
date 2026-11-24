@@ -150,6 +150,74 @@ export interface Arrival {
   delay_seconds?: number;
   /** 混雑度合い（GTFS-RT occupancy_status） */
   occupancy_status?: string;
+  /** 便全体が運休か */
+  is_canceled?: boolean;
+  /** このバス停を通過するか */
+  is_skipped?: boolean;
+}
+
+export interface AlertTargetRoute {
+  route_id: string;
+  short_name: string;
+  color: string;
+}
+
+export interface AlertTargetStop {
+  stop_id: string;
+  name: string;
+  lat: number;
+  lng: number;
+}
+
+export interface AlertTargetTrip {
+  route_id: string;
+  route_name: string;
+  trip_id: string;
+  headsign?: string;
+}
+
+/** GTFS-RT Alert フィードの運行情報 */
+export interface ServiceAlert {
+  id: string;
+  cause?: string;
+  effect?: string;
+  header_text?: string;
+  description_text?: string;
+  url?: string;
+  active_from?: number;
+  active_to?: number;
+  agency_wide?: boolean;
+  target_routes?: AlertTargetRoute[];
+  target_stops?: AlertTargetStop[];
+  target_trips?: AlertTargetTrip[];
+}
+
+export interface DisruptedStopInfo {
+  stop_id: string;
+  name: string;
+}
+
+export interface DisruptedTripNotice {
+  trip_id: string;
+  route_id: string;
+  route_name: string;
+  route_color: string;
+  headsign: string;
+  via?: string;
+  start_time?: string;
+  first_stop_id?: string;
+  first_stop_lat?: number;
+  first_stop_lng?: number;
+  canceled?: boolean;
+  skipped_stops?: DisruptedStopInfo[];
+}
+
+export interface AlertsOverviewResponse {
+  alerts: ServiceAlert[];
+  disrupted_trips: DisruptedTripNotice[];
+  count: number;
+  fetched_at: number;
+  realtime_error?: string;
 }
 
 /** サーバーから返されるバス位置情報 */
@@ -181,6 +249,12 @@ export interface TripDetailResponse {
   delays?: Record<string, number>;
   /** この便全体の遅延秒数 */
   trip_delay?: number;
+  /** この便が運休か */
+  canceled?: boolean;
+  /** 通過扱いとなった stop_id 一覧 */
+  skipped_stops?: string[];
+  /** 関連する運行情報 */
+  alerts?: ServiceAlert[];
 }
 
 /** サーバーから返されるバス停時刻表情報 */
@@ -190,6 +264,12 @@ export interface StopTimetableResponse {
   timetables: TimetablesData; // このバス停に停車する便のみ
   /** 各便の遅延秒数（route_id → trip_id → delay_seconds） */
   delays?: Record<string, Record<string, number>>;
+  /** 運休となった便（route_id → trip_id → true） */
+  canceled_trips?: Record<string, Record<string, boolean>>;
+  /** このバス停を通過する便（route_id → trip_id → true） */
+  skipped_trips?: Record<string, Record<string, boolean>>;
+  /** 関連する運行情報 */
+  alerts?: ServiceAlert[];
 }
 
 // --- 全データをまとめた型 ---
@@ -203,6 +283,13 @@ export interface AppData {
   calendar: CalendarData;
   routes: RoutesData;
   extra: ExtraData;
+}
+
+/** デバッグモード用のダミー状態表示設定 */
+export interface DebugMockOptions {
+  alert: boolean;
+  canceled: boolean;
+  skipped: boolean;
 }
 
 /** 地図ベースレイヤーの種類 */
